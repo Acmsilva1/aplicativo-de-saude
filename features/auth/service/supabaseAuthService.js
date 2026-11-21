@@ -1,9 +1,10 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { getSupabaseAdmin, getSupabaseAnon } from '../../../lib/supabase.js';
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
+const INITIAL_PASSWORD = '123456';
 const temporaryPasswordDigest = (password) => createHash('sha256').update(password).digest('hex');
 const matchesDigest = (password, digest) => {
   if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/i.test(digest)) return false;
@@ -251,7 +252,7 @@ export async function createAccount({ name, email, role, professor_id }) {
   }
 
   const admin = getSupabaseAdmin();
-  const initialPassword = randomBytes(24).toString('base64url');
+  const initialPassword = INITIAL_PASSWORD;
   const { data: existing } = await admin
     .from('health_user_profiles')
     .select('user_id')

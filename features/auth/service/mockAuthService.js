@@ -4,6 +4,7 @@ import { useMockData } from '../../../lib/env.js';
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEY_LEN = 64;
 const DEFAULT_PASSWORD = '12345';
+const INITIAL_ACCOUNT_PASSWORD = '123456';
 
 function hashPassword(plain) {
   const salt = randomBytes(16);
@@ -102,7 +103,7 @@ export function createDemoAccount({ name, email, role, professor_id }) {
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
   }
-  const initialPassword = randomBytes(24).toString('base64url');
+  const initialPassword = INITIAL_ACCOUNT_PASSWORD;
   const account = {
     id: `demo-${randomUUID()}`,
     name: n,

@@ -4,15 +4,15 @@ import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
 import { renderPasswordChange, showWelcome } from './auth/firstAccess.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',accounts:[],metrics:null,profiles:[],diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],notice:''};
+const state={user:null,module:'users',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
 async function request(url,options={}){const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options});const data=await r.json();if(!r.ok)throw Error(data.error||'Ação indisponível.');return data;}
 const mutate=(resource,method,body)=>request(`/api/saude?resource=${resource}`,{method,body:JSON.stringify(body)});
 const initialModule=()=>'home';
 async function enter(){
  const dismiss=showWelcome(state.user);
- try{await Promise.all([new Promise(resolve=>setTimeout(resolve,3000)),state.user.must_change_password?Promise.resolve():load(initialModule())]);render();}finally{dismiss();}
+ try{if(!state.user.must_change_password)await load(initialModule());render();}finally{dismiss();}
 }
-async function logout(){await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,accounts:[],metrics:null,profiles:[],diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],notice:''});auth();}
+async function logout(){await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''});auth();}
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{try{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}catch(e){passwordChange(e.message);}}});}
 function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{try{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}catch(e){auth(e.message);}}});}
 async function load(module,targetId=''){
@@ -23,35 +23,54 @@ async function load(module,targetId=''){
  try{
   if(state.user.role==='admin'){
    if(module==='observability')state.metrics=await request('/api/auth?resource=observability');
-   else if(module==='home'){
-    state.accounts=(await request('/api/auth?resource=accounts')).accounts;
-    try{state.metrics=await request('/api/auth?resource=observability');}catch{/* métricas opcionais na landing */}
-   }else state.accounts=(await request('/api/auth?resource=accounts')).accounts;
+   else if(module==='home'||!state.accountsLoaded){
+    const [accountData,metrics]=await Promise.all([
+     request('/api/auth?resource=accounts'),
+     module==='home'?request('/api/auth?resource=observability').catch(()=>null):Promise.resolve(null),
+    ]);
+    state.accounts=accountData.accounts;
+    state.accountsLoaded=true;
+    if(metrics)state.metrics=metrics;
+   }
   }else if(state.user.role==='professor'){
-   state.profiles=(await request('/api/saude?resource=professor-users')).users;
+   const [profileData,templateData,foodData]=await Promise.all([
+    state.profilesLoaded?Promise.resolve({users:state.profiles}):request('/api/saude?resource=professor-users'),
+    state.templatesLoaded?Promise.resolve({templates:state.templates}):request('/api/saude?resource=professor-portfolio'),
+    state.foodsLoaded?Promise.resolve({foods:state.foods}):request('/api/saude?resource=professor-alimentos'),
+   ]);
+   state.profiles=profileData.users;
+   state.templates=templateData.templates;
+   state.foods=foodData.foods;
+   state.profilesLoaded=true;
+   state.templatesLoaded=true;
+   state.foodsLoaded=true;
    if(!state.profiles.some(profile=>profile.id===state.selectedUserId))state.selectedUserId=state.profiles[0]?.id||'';
-   state.templates=(await request('/api/saude?resource=professor-portfolio')).templates;
-   if(!state.foods.length)state.foods=(await request('/api/saude?resource=professor-alimentos')).foods;
    if(['template-detail','editTemplate'].includes(module))state.template=state.templates.find(template=>template.id===(targetId||state.template?.id))||null;
    if(module==='createTemplate')state.template=null;
-   if(module==='monitor')state.monitor=await request(`/api/saude?resource=professor-agua&user_id=${encodeURIComponent(state.selectedUserId)}`);
-   if(['diets','diet-detail','createDiet','editDiet'].includes(module))state.diets=(await request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}`)).diets;
+   const requests=[];
+   if(module==='monitor')requests.push(request(`/api/saude?resource=professor-agua&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{state.monitor=data;}));
+   if(['diets','diet-detail','editDiet'].includes(module))requests.push(request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{state.diets=data.diets;}));
+   await Promise.all(requests);
   }else{
-   if(module==='water'||module==='home')state.water=await request('/api/saude?resource=agua');
-   if(module!=='water')state.diets=(await request('/api/saude?resource=dietas')).diets;
+   if(module==='home'){
+    const [water,diets]=await Promise.all([request('/api/saude?resource=agua'),request('/api/saude?resource=dietas')]);
+    state.water=water;
+    state.diets=diets.diets;
+   }else if(module==='water')state.water=await request('/api/saude?resource=agua');
+   else state.diets=(await request('/api/saude?resource=dietas')).diets;
   }
   if(['diet-detail','editDiet'].includes(module))state.diet=state.diets.find(x=>x.id===(targetId||state.diet?.id))||null;
   else if(module==='createDiet'||module==='createTemplate')state.diet=null;
   else state.diet=state.diets[0]||null;
  }catch(e){state.notice={text:e.message,type:'error'};state.diets=[];state.diet=null;state.water=null;state.monitor=null;}
 }
-async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){try{await work();await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}render();}
+async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}render();}
 function showInitialPasswordDialog(account,password){
  const dialog=document.createElement('dialog');
  dialog.className='initial-password-dialog';
  dialog.setAttribute('aria-labelledby','initial-password-title');
- dialog.innerHTML='<span class="eyebrow">ACESSO CRIADO</span><h2 id="initial-password-title">Senha temporária</h2><p data-initial-password-account></p><label for="initial-account-password">Senha inicial</label><input id="initial-account-password" type="text" readonly autocomplete="off"><p class="initial-password-dialog__hint">Compartilhe em um canal privado. O usuário deverá criar uma nova senha no primeiro acesso.</p><div class="initial-password-dialog__actions"><button type="button" class="saude-btn saude-btn--primary" data-copy-initial-password>Copiar senha</button><button type="button" class="saude-btn" data-close-initial-password>Fechar</button></div>';
- dialog.querySelector('[data-initial-password-account]').textContent='A senha de '+account.name+' será exibida somente agora.';
+ dialog.innerHTML='<span class="eyebrow">ACESSO CRIADO</span><h2 id="initial-password-title">Senha de primeiro acesso</h2><p data-initial-password-account></p><label for="initial-account-password">Senha inicial</label><input id="initial-account-password" type="text" readonly autocomplete="off"><p class="initial-password-dialog__hint">Use esta senha no primeiro acesso. Em seguida, o usuário deverá cadastrar uma senha pessoal com pelo menos 8 caracteres.</p><div class="initial-password-dialog__actions"><button type="button" class="saude-btn saude-btn--primary" data-copy-initial-password>Copiar senha</button><button type="button" class="saude-btn" data-close-initial-password>Fechar</button></div>';
+ dialog.querySelector('[data-initial-password-account]').textContent='Senha padrão da conta de '+account.name+'.';
  const input=dialog.querySelector('#initial-account-password');
  input.value=password;
  const copyButton=dialog.querySelector('[data-copy-initial-password]');
@@ -73,8 +92,9 @@ function showInitialPasswordDialog(account,password){
 async function createAccount(payload){
  try{
   const result=await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
+  state.accountsLoaded=false;
   await load('accounts');
-  state.notice={text:'Conta criada. A senha inicial é exibida uma única vez.',type:'success'};
+  state.notice={text:'Conta criada. Informe ao usuário a senha de primeiro acesso.',type:'success'};
   render();
   showInitialPasswordDialog(result.account,result.initialPassword);
  }catch(error){

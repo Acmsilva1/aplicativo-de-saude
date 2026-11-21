@@ -46,9 +46,21 @@ function setupInstallPrompt() {
  button.className='pwa-install-button';
  button.innerHTML='<svg class="pwa-install-button__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M5 15.5v4A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg><span class="pwa-install-button__tag">APP</span>';
  const setInstallLabel=(label)=>button.setAttribute('aria-label',label+' Ritmo Saúde');
+ const placeButton=()=>{
+  const header=document.querySelector('.app-header');
+  if(header){
+   if(button.parentElement!==header)header.insertBefore(button,header.querySelector('.header-account'));
+   button.classList.add('pwa-install-button--header');
+  }else{
+   if(button.parentElement!==document.body)document.body.append(button);
+   button.classList.remove('pwa-install-button--header');
+  }
+ };
  setInstallLabel(isAppleManualInstallBrowser()?'Como instalar':'Instalar aplicativo');
  button.hidden=!isAppleManualInstallBrowser();
- document.body.append(button);
+ placeButton();
+ const appRoot=document.querySelector('#app');
+ if(appRoot)new MutationObserver(placeButton).observe(appRoot,{childList:true,subtree:true});
 
  let installPrompt=null;
  window.addEventListener('beforeinstallprompt',(event)=>{
