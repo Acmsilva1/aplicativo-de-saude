@@ -142,13 +142,13 @@ function renderProfessorHome({ profiles = [], templates = [] } = {}) {
       <button type="button" class="saude-home-card" data-module="users">
         <span class="saude-home-card__icon" aria-hidden="true">👩‍🎓</span>
         <strong>Alunos</strong>
-        <span>Gerencie perfis, dietas e acompanhamento de água.</span>
+        <span>Perfis e acompanhamento.</span>
         <small>${studentCount} aluno${studentCount === 1 ? '' : 's'}</small>
       </button>
       <button type="button" class="saude-home-card" data-module="portfolio">
         <span class="saude-home-card__icon" aria-hidden="true">📚</span>
         <strong>Dietas</strong>
-        <span>Modelos e portfólio de planos alimentares.</span>
+        <span>Modelos para reutilizar.</span>
         <small>${dietCount} modelo${dietCount === 1 ? '' : 's'}</small>
       </button>
     </div>
@@ -400,13 +400,13 @@ function renderStudentLanding({ diets = [], water = null } = {}) {
       <button type="button" class="saude-home-card" data-module="diets">
         <span class="saude-home-card__icon" aria-hidden="true">🥗</span>
         <strong>Dieta</strong>
-        <span>Consulte os planos preparados pelo seu professor.</span>
+        <span>Planos publicados pelo professor.</span>
         <small>${dietCount} plano${dietCount === 1 ? '' : 's'}</small>
       </button>
       <button type="button" class="saude-home-card" data-module="water">
         <span class="saude-home-card__icon" aria-hidden="true">💧</span>
         <strong>Água</strong>
-        <span>Acompanhe sua meta e registre o consumo do dia.</span>
+        <span>Meta e consumo diário.</span>
         <small>${esc(waterLabel)}</small>
       </button>
     </div>
@@ -508,13 +508,13 @@ function renderAdminHome({ accounts = [], metrics = null } = {}) {
       <button type="button" class="saude-home-card" data-module="accounts">
         <span class="saude-home-card__icon" aria-hidden="true">👥</span>
         <strong>Contas</strong>
-        <span>Cadastre professores e alunos e controle o acesso à plataforma.</span>
+        <span>Contas e acessos.</span>
         <small>${accountCount} conta${accountCount === 1 ? '' : 's'}</small>
       </button>
       <button type="button" class="saude-home-card" data-module="observability">
         <span class="saude-home-card__icon" aria-hidden="true">📈</span>
         <strong>Observabilidade</strong>
-        <span>Acompanhe métricas do servidor e volume de requisições.</span>
+        <span>Métricas do sistema.</span>
         <small>${esc(observabilityLabel)}</small>
       </button>
     </div>
@@ -526,10 +526,10 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   const professor = state.user?.role === 'professor';
   const homeModule = 'home';
   const view = admin
-    ? { label: 'Administração', homeLabel: '🏠 Início', nav: [['accounts', '👥 Contas'], ['observability', '📈 Observabilidade']] }
+    ? { label: 'Administração' }
     : professor
-    ? { label: 'Professor', homeLabel: '🏠 Início', nav: [['users', '👩‍🎓 Alunos'], ['portfolio', '📚 Portfólio']] }
-    : { label: 'Aluno', homeLabel: '🏠 Início', nav: [['diets', '🥗 Dieta'], ['water', '💧 Água']] };
+    ? { label: 'Professor' }
+    : { label: 'Aluno' };
   const homeActive = state.module === homeModule;
   let content;
 
@@ -558,25 +558,9 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   } else content = renderStudentHome(state);
 
   ensureWaterDropStyles();
-  const navTitle = admin ? 'Administração' : 'Área do Professor / Aluno';
-  const navActive = (module) => {
-    if (module === 'portfolio') return ['portfolio', 'template-detail', 'createTemplate', 'editTemplate'].includes(state.module);
-    if (module === 'users') return ['users', 'diets', 'diet-detail', 'createDiet', 'editDiet', 'monitor'].includes(state.module);
-    if (module === 'accounts') return ['accounts', 'createAccount', 'editAccount'].includes(state.module);
-    if (module === 'diets') return ['diets', 'diet-detail'].includes(state.module);
-    if (module === 'observability') return state.module === 'observability';
-    if (module === 'water') return state.module === 'water';
-    return false;
-  };
-  const tabButtons = [
-    `<button type="button" role="tab" data-module="${homeModule}" class="nav-link nav-link--home ${homeActive ? 'is-active' : ''}"${homeActive ? ' aria-selected="true"' : ' aria-selected="false"'}>${view.homeLabel}</button>`,
-    ...view.nav.map(([module, label]) => {
-      const active = navActive(module);
-      return `<button type="button" role="tab" data-module="${module}" class="nav-link ${active ? 'is-active' : ''}" aria-selected="${active ? 'true' : 'false'}">${label}</button>`;
-    }),
-  ].join('');
+  const moduleNav = homeActive ? '' : `<nav class="module-nav module-nav--home-only" aria-label="Navegação"><button type="button" class="home-return-button" data-module="${homeModule}" aria-label="Início" title="Início"><span aria-hidden="true">🏠</span></button></nav>`;
   container.innerHTML = `<main class="app-shell"><header class="app-header"><div class="header-brand"><span class="header-heart">♥</span> RITMO <strong>SAÚDE</strong></div><div class="header-account"><span>${esc(state.user?.name || view.label)}</span><small>${view.label}</small><button type="button" data-action="logout">Sair</button></div></header>
-    <nav class="module-nav" aria-label="Módulos"><p class="nav-title">${navTitle}</p><div class="module-tabs" role="tablist" aria-label="Seções">${tabButtons}</div></nav>
+    ${moduleNav}
     <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.loading ? '<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>Abrindo sua área</strong><small>Carregando os dados…</small></span></span></div>' : ''}${renderNotice()}${content}</div><footer class="app-footer">Ritmo Saúde · dados mock locais</footer></main>`;
 
   if (state.notice) {
