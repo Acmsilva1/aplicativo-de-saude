@@ -4695,3 +4695,27 @@ body {
   .saude-diet-list-status > span { font-size: .62rem; }
   .saude-diet-status-toggle { min-width: 48px; min-height: 28px; }
 }
+
+/* Compact cards with content-sized diet plans across desktop and mobile. */
+.saude-home-grid { max-width: 440px; }
+.saude-home-card { padding: .9rem; gap: .35rem; }
+.saude-diet-plan-grid { max-width: 600px; margin-inline: auto; }
+.saude-diet-plan-card { min-height: 0; padding: 1rem; }
+.saude-diet-plan-open { position: relative; grid-template-columns: minmax(0, 1fr) auto; align-content: start; gap: .65rem; }
+.saude-diet-plan-icon { grid-column: 1 / -1; width: 68px; height: 68px; padding: 0; }
+.saude-diet-plan-icon svg { display: block; width: 100%; height: 100%; }
+.saude-diet-plan-main { grid-column: 1 / -1; gap: .35rem; }
+.saude-diet-plan-main strong { font-size: 1.2rem; overflow-wrap: anywhere; }
+.saude-diet-plan-main small { font-size: .9rem; line-height: 1.4; overflow-wrap: anywhere; }
+.saude-diet-plan-meta { grid-column: 1; font-size: .76rem; padding: .25rem .55rem; }
+.saude-diet-plan-open > .fin-nav-row__chevron { grid-column: 2; align-self: center; }
+.saude-diet-list-status { margin-top: .75rem; }
+@media (max-width: 560px) {
+  .saude-home-grid { max-width: 360px; }
+  .saude-home-card { padding: .75rem; }
+  .saude-diet-plan-card { padding: .8rem; }
+  .saude-diet-plan-icon { width: 56px; height: 56px; }
+  .saude-diet-plan-main strong { font-size: 1.05rem; }
+  .saude-diet-plan-main small { font-size: .8rem; }
+  .saude-diet-plan-meta { font-size: .7rem; }
+}

@@ -213,7 +213,7 @@ function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = 
   const rows = diets.map((diet) => {
     const details = diet.objetivo || diet.observacoes || 'Plano alimentar';
     const meta = diet.semanal ? '📅 Semanal' : '📌 Fixa';
-    const icon = diet.semanal ? '📅' : '🍽️';
+    const icon = '<svg viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false"><circle cx="40" cy="40" r="37" fill="#f1f5f9" stroke="#d5dee8" stroke-width="2"/><circle cx="40" cy="40" r="29" fill="#fff" stroke="#e2e8f0" stroke-width="2"/><path d="M23 32c-8-8 0-17 8-11 3-9 16-6 15 3 10 1 9 12 1 14L28 43c-9 0-13-7-5-11Z" fill="#59a84b"/><circle cx="29" cy="29" r="5" fill="#ee6652"/><circle cx="42" cy="30" r="4" fill="#ef8354"/><path d="M42 44c3-8 14-10 20-3 7 9-1 23-12 20-8-2-12-10-8-17Z" fill="#ce834b"/><path d="m48 43 9 8m-11-1 7 7" stroke="#a56438" stroke-width="2" stroke-linecap="round"/><path d="M20 48c2-9 18-8 20 1 3 12-22 15-20-1Z" fill="#f6e4b7"/><path d="m26 47 2 1m4-2 2 1m-8 5 2 1m5-2 2 1" stroke="#d9be87" stroke-width="2" stroke-linecap="round"/></svg>';
     const title = diet.titulo || diet.title || 'Dieta';
     if (isStudent) return `<li class="saude-diet-plan-card"><button type="button" class="saude-diet-plan-open" data-action="open-diet" data-id="${esc(diet.id)}">
       <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
