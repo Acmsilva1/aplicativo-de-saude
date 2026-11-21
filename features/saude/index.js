@@ -213,16 +213,20 @@ function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = 
   const rows = diets.map((diet) => {
     const details = diet.objetivo || diet.observacoes || 'Plano alimentar';
     const meta = diet.semanal ? '📅 Semanal' : '📌 Fixa';
-    if (isStudent) return navRow({ action: 'open-diet', id: diet.id, icon: diet.semanal ? '📅' : '🍽️', label: diet.titulo || diet.title || 'Dieta', meta, detail: details });
+    const icon = diet.semanal ? '📅' : '🍽️';
+    const title = diet.titulo || diet.title || 'Dieta';
+    if (isStudent) return `<li class="saude-diet-plan-card"><button type="button" class="saude-diet-plan-open" data-action="open-diet" data-id="${esc(diet.id)}">
+      <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
+    </button></li>`;
     const visible = diet.visible_to_student === true;
-    return `<li class="saude-diet-list-row"><button type="button" class="fin-nav-row" data-action="open-diet" data-id="${esc(diet.id)}">
-      <span class="fin-nav-row__icon" aria-hidden="true">${diet.semanal ? '📅' : '🍽️'}</span><span class="fin-nav-row__main"><span class="fin-nav-row__label">${esc(diet.titulo || diet.title || 'Dieta')}</span>${details ? `<small class="fin-nav-row__detail">${esc(details)}</small>` : ''}</span><span class="saude-nav-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
+    return `<li class="saude-diet-plan-card saude-diet-list-row"><button type="button" class="saude-diet-plan-open" data-action="open-diet" data-id="${esc(diet.id)}">
+      <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
     </button><div class="saude-diet-list-status"><span>Status</span><button type="button" class="saude-diet-status-toggle${visible ? ' is-on' : ''}" data-action="toggle-diet-visibility" data-id="${esc(diet.id)}" data-visible="${visible}" aria-pressed="${visible}" aria-label="${visible ? 'Desativar' : 'Ativar'} dieta para o aluno">${visible ? 'On' : 'Off'}</button></div></li>`;
   }).join('');
   return `<section class="module-page">
     ${!isStudent ? '<button class="back-link" type="button" data-action="back-to-profiles">‹ Voltar para alunos</button>' : ''}
     <header class="module-heading"><div><span class="eyebrow">${isStudent ? 'ROTINA ALIMENTAR' : 'GESTÃO DO ALUNO'}</span><h1>${isStudent ? '🥗 Minhas dietas' : `🍽️ Dietas de ${esc(profileName(profile))}`}</h1><p>${isStudent ? 'Consulte os planos preparados pelo seu professor.' : 'Abra, edite ou remova os planos deste perfil.'}</p></div>${!isStudent ? `<button type="button" class="button button--primary" data-action="new-diet" data-id="${esc(selectedUserId)}">➕ Nova dieta</button>` : ''}</header>
-    <p class="fin-section-label">📋 Planos cadastrados · ${diets.length}</p><ul class="fin-list">${rows || '<li class="saude-empty-row">🍽️ Nenhuma dieta cadastrada para este perfil.</li>'}</ul>
+    <p class="fin-section-label">📋 Planos cadastrados · ${diets.length}</p><ul class="saude-diet-plan-grid">${rows || '<li class="saude-empty-row">🍽️ Nenhuma dieta cadastrada para este perfil.</li>'}</ul>
   </section>`;
 }
 
