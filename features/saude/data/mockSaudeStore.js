@@ -1,6 +1,7 @@
 import { listAvailableStudents } from '../../auth/service/mockAuthService.js';
 import { randomUUID } from 'node:crypto';
 import { createEmptyDietMeals, todayDietDate } from '../service/dietasService.js';
+import { ALIMENTOS_NUTRICIONAIS } from './alimentosNutricionais.js';
 const users = new Map();
 function dataFor(id) {
  if(!users.has(id))users.set(id,{diets:[],goal:null,goalName:'Hidratação diária',entries:[]});
@@ -32,15 +33,18 @@ export const mockSaudeStore = {
  hasStudent(id,professorId){return listAvailableStudents(professorId).some(p=>p.id===id);},
  getDiets(id){return structuredClone(dataFor(id).diets.filter(diet=>diet.visible_to_student));},
  getProfessorDiets(id){return structuredClone(dataFor(id).diets);},
+ setDietVisibility(id,dietId,visible){const diet=dataFor(id).diets.find(x=>x.id===dietId);if(!diet)return null;diet.visible_to_student=visible;return {id:diet.id,visible_to_student:visible};},
  getDiet(id,dietId){return structuredClone(dataFor(id).diets.find(x=>x.id===dietId)||dataFor(id).diets[0]||null);},
  saveDiet(id,input,dietId){
   const d=dataFor(id);const index=d.diets.findIndex(x=>x.id===dietId);if(dietId&&index<0)return null;
   const diet=buildDiet(input,dietId);
+  if(index>=0&&typeof input.visible_to_student!=='boolean')diet.visible_to_student=d.diets[index].visible_to_student===true;
   if(index>=0)d.diets[index]=diet;else d.diets.push(diet);return structuredClone(diet);
  },
  deleteDiet(id,dietId){const d=dataFor(id);const index=d.diets.findIndex(x=>x.id===dietId);if(index<0)return false;d.diets.splice(index,1);return true;},
  getWater(id){const d=dataFor(id);const date=todayDietDate();const entries=d.entries.filter(x=>x.date===date);return {goal_ml:d.goal,nome:d.goalName,checkins:structuredClone(entries),total_ml:entries.reduce((s,x)=>s+x.amount_ml,0),date,history:[...new Set(d.entries.map(x=>x.date))].filter(x=>x!==date).map(day=>({date:day,total_ml:d.entries.filter(x=>x.date===day).reduce((s,x)=>s+x.amount_ml,0)}))};},
  setWaterGoal(id,goal,name){const d=dataFor(id);d.goal=goal;d.goalName=String(name||d.goalName||'Hidratação diária').slice(0,80);return this.getWater(id);},
  deleteWaterGoal(id){const d=dataFor(id);d.goal=null;return this.getWater(id);},
+ listAlimentos(){return structuredClone(ALIMENTOS_NUTRICIONAIS.map(food=>({...food,id:food.id??food.source_order})));},
  addWater(id,amount){const d=dataFor(id);d.entries.push({id:randomUUID(),amount_ml:amount,date:todayDietDate(),time:new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date())});return this.getWater(id);}
 };

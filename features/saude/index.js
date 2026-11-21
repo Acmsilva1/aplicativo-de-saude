@@ -1,6 +1,7 @@
 import { confirmAction, showToast } from './service/uiConfirmation.js';
 import { WATER_AMOUNTS_ML, waterAmountLabel } from './service/waterIntakeService.js';
 import { DIET_MEALS, DIET_WEEK, dietDayIndex, dietForDate, todayDietDate } from './service/dietasService.js';
+import { DIET_NUTRITION_STYLES, renderDietFoodDetails, renderDietNutritionTotal } from './dietNutritionView.js';
 import { renderWaterDropHtml, WATER_DROP_STYLES } from './waterDropVisual.js';
 
 const esc = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -209,7 +210,15 @@ function renderTemplateDetail(template) {
 
 function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = false) {
   const profile = profiles.find((item) => profileId(item) === String(selectedUserId));
-  const rows = diets.map((diet) => navRow({ action: 'open-diet', id: diet.id, icon: diet.semanal ? '📅' : '🍽️', label: diet.titulo || diet.title || 'Dieta', meta: diet.semanal ? '📅 Semanal' : '📌 Fixa', detail: [diet.objetivo || diet.observacoes || 'Plano alimentar', !isStudent ? (diet.visible_to_student ? 'Visível para o aluno' : 'Oculta para o aluno') : ''].filter(Boolean).join(' · '), disabled: false })).join('');
+  const rows = diets.map((diet) => {
+    const details = diet.objetivo || diet.observacoes || 'Plano alimentar';
+    const meta = diet.semanal ? '📅 Semanal' : '📌 Fixa';
+    if (isStudent) return navRow({ action: 'open-diet', id: diet.id, icon: diet.semanal ? '📅' : '🍽️', label: diet.titulo || diet.title || 'Dieta', meta, detail: details });
+    const visible = diet.visible_to_student === true;
+    return `<li class="saude-diet-list-row"><button type="button" class="fin-nav-row" data-action="open-diet" data-id="${esc(diet.id)}">
+      <span class="fin-nav-row__icon" aria-hidden="true">${diet.semanal ? '📅' : '🍽️'}</span><span class="fin-nav-row__main"><span class="fin-nav-row__label">${esc(diet.titulo || diet.title || 'Dieta')}</span>${details ? `<small class="fin-nav-row__detail">${esc(details)}</small>` : ''}</span><span class="saude-nav-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
+    </button><div class="saude-diet-list-status"><span>Status</span><button type="button" class="saude-diet-status-toggle${visible ? ' is-on' : ''}" data-action="toggle-diet-visibility" data-id="${esc(diet.id)}" data-visible="${visible}" aria-pressed="${visible}" aria-label="${visible ? 'Desativar' : 'Ativar'} dieta para o aluno">${visible ? 'On' : 'Off'}</button></div></li>`;
+  }).join('');
   return `<section class="module-page">
     ${!isStudent ? '<button class="back-link" type="button" data-action="back-to-profiles">‹ Voltar para alunos</button>' : ''}
     <header class="module-heading"><div><span class="eyebrow">${isStudent ? 'ROTINA ALIMENTAR' : 'GESTÃO DO ALUNO'}</span><h1>${isStudent ? '🥗 Minhas dietas' : `🍽️ Dietas de ${esc(profileName(profile))}`}</h1><p>${isStudent ? 'Consulte os planos preparados pelo seu professor.' : 'Abra, edite ou remova os planos deste perfil.'}</p></div>${!isStudent ? `<button type="button" class="button button--primary" data-action="new-diet" data-id="${esc(selectedUserId)}">➕ Nova dieta</button>` : ''}</header>
@@ -217,19 +226,22 @@ function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = 
   </section>`;
 }
 
-function renderDietMeals(meals = []) {
+function renderDietMeals(meals = [], foods = []) {
   return meals.map((meal) => `<li class="saude-diet-meal"><div class="saude-diet-meal__head"><span class="saude-meal-emoji" aria-hidden="true">${mealEmoji(meal.tipo)}</span><span class="saude-diet-meal__time">${esc(meal.horario || '—')}</span><strong>${esc(meal.titulo || DIET_MEALS.find((entry) => entry.tipo === meal.tipo)?.titulo || meal.tipo)}</strong></div>
-      <ul class="saude-diet-items">${(meal.itens || []).map((item) => `<li><span>${esc(item.nome)}</span><small>${esc(item.quantidade || (item.quantidade_valor ? `${item.quantidade_valor} ${item.quantidade_unidade || 'g'}` : ''))}${item.observacao ? ` · ${esc(item.observacao)}` : ''}</small></li>`).join('') || '<li class="saude-empty-item">🍽️ Sem alimentos nesta refeição.</li>'}</ul></li>`).join('');
+      <ul class="saude-diet-items">${(meal.itens || []).map((item) => `<li>${renderDietFoodDetails(item, foods)}</li>`).join('') || '<li class="saude-empty-item">🍽️ Sem alimentos nesta refeição.</li>'}</ul></li>`).join('');
 }
 
-function renderDietDetail(diet, { editable = false, profile = null, showWeek = false } = {}) {
+function renderDietDetail(diet, { editable = false, profile = null, showWeek = false, foods = [] } = {}) {
   if (!diet) return '<section class="module-page"><h1>Dieta</h1><p class="saude-empty-row">Selecione uma dieta para abrir os detalhes.</p></section>';
   const weekly = Boolean(diet.semanal);
   const days = weekly && showWeek ? DIET_WEEK.map((day, index) => ({ day, meals: diet.semana?.[index]?.refeicoes || [] })) : null;
   const daily = weekly ? dietForDate(diet, todayDietDate()) : diet;
   const body = days
-    ? `<div class="saude-week-detail">${days.map((entry) => `<section class="saude-week-detail__day"><h3>${esc(entry.day)}</h3><ul class="fin-list saude-diet-list">${renderDietMeals(entry.meals) || '<li class="saude-empty-row">Nenhuma refeição cadastrada para este dia.</li>'}</ul></section>`).join('')}</div>`
-    : `<ul class="fin-list saude-diet-list">${renderDietMeals(daily?.refeicoes || []) || '<li class="saude-empty-row">Este plano ainda não tem refeições.</li>'}</ul>`;
+    ? `<div class="saude-week-detail">${days.map((entry) => {
+      const dayDiet = { ...diet, semanal: false, refeicoes: entry.meals };
+      return `<section class="saude-week-detail__day"><h3>${esc(entry.day)}</h3><ul class="fin-list saude-diet-list">${renderDietMeals(entry.meals, foods) || '<li class="saude-empty-row">Nenhuma refeição cadastrada para este dia.</li>'}</ul>${renderDietNutritionTotal(dayDiet, foods)}</section>`;
+    }).join('')}</div>`
+    : `<ul class="fin-list saude-diet-list">${renderDietMeals(daily?.refeicoes || [], foods) || '<li class="saude-empty-row">Este plano ainda não tem refeições.</li>'}</ul>${renderDietNutritionTotal(daily || diet, foods)}`;
   const eyebrow = weekly ? (days ? '🗓️ PLANO SEMANAL · SEGUNDA A DOMINGO' : '🗓️ PLANO SEMANAL · HOJE') : '📌 PLANO FIXO';
   return `<section class="module-page">
     <button class="back-link" type="button" data-action="back-to-diets">‹ Voltar para dietas</button>
@@ -282,7 +294,6 @@ function renderDietEditor({ diet = null, profiles = [], selectedUserId = '', edi
     return `<details class="saude-week-day"${dayIndex === 0 ? ' open' : ''}><summary>${esc(day)}</summary><div class="saude-meal-editors">${DIET_MEALS.map((meal) => mealEditorFields(meal, `day${dayIndex}`, dayMeals.find((entry) => entry.tipo === meal.tipo), { showTime: false })).join('')}</div></details>`;
   }).join('');
   const formatValue = diet?.semanal ? 'weekly' : 'single';
-  const visibilityControl = templateMode ? '' : `<label class="saude-diet-visibility"><input type="checkbox" name="visible_to_student" ${diet?.visible_to_student === true || diet?.status === 'active' ? 'checked' : ''}><span class="saude-diet-visibility__switch" aria-hidden="true"></span><span class="saude-diet-visibility__copy"><strong>Disponibilizar para o aluno</strong><small>Desativado: a dieta fica salva, mas não aparece para o aluno.</small></span></label>`;
   const studentField = templateMode ? '' : renderStudentDrill(accessible, selected, { name: 'user_id', required: true, disabled: editing });
   return `<div class="saude-modal-backdrop"><section class="saude-diet-modal" role="dialog" aria-modal="true" aria-labelledby="diet-editor-title">
     <header class="saude-diet-modal__header"><div><h2 id="diet-editor-title">${templateMode ? (editing ? '✏️ Editar modelo' : '➕ Novo modelo de dieta') : editing ? '✏️ Editar dieta' : '➕ Nova dieta'}</h2><p>${templateMode ? 'Modelo reutilizável do seu portfólio, sem vínculo com aluno.' : 'Monte o plano e organize as refeições do aluno.'}</p></div><button class="saude-icon-btn" type="button" data-action="cancel-editor" aria-label="Fechar">×</button></header>
@@ -290,7 +301,6 @@ function renderDietEditor({ diet = null, profiles = [], selectedUserId = '', edi
       ${studentField}
       <label>📝 ${templateMode ? 'Nome do modelo' : 'Nome da dieta'}<input name="titulo" required maxlength="100" value="${esc(diet?.titulo || diet?.title || '')}" placeholder="Ex.: Plano alimentar" /></label>
       <label>🎯 Objetivo<input name="objetivo" maxlength="200" value="${esc(diet?.objetivo || '')}" placeholder="Ex.: rotina equilibrada" /></label>
-      ${visibilityControl}
       ${renderChoiceOptions({ name: 'formato', label: '📋 Formato do plano', value: formatValue, options: DIET_FORMAT_OPTIONS, variant: 'cards', fieldAttrs: 'data-diet-format', help: `<small class="saude-format-help" data-format-help>${diet?.semanal ? 'Cada dia tem seu próprio cardápio. Os horários valem para segunda a domingo.' : 'O mesmo cardápio e os mesmos horários valem para todos os dias.'}</small>` })}
       <label>🔥 Meta calórica diária (kcal)<input type="number" name="meta_calorias" min="500" max="10000" step="1" value="${esc(diet?.meta_calorias ?? '')}" placeholder="Opcional · ex. 2000" /></label>
       <label>📝 Observações<textarea name="observacoes" rows="2" maxlength="1000">${esc(diet?.observacoes || '')}</textarea></label>
@@ -354,8 +364,8 @@ function parseDietItems(value) {
   }
 }
 
-function renderWater(water, { editable = false, canSetGoal = false, showBack = false, userId = '', title = 'Água', userName = '' } = {}) {
-  if (!water) return `<section class="module-page"><h1>${esc(title)}</h1><p class="saude-empty-row">Não foi possível carregar os dados deste perfil.</p></section>`;
+function renderWater(water, { editable = false, canSetGoal = false, showBack = false, userId = '', title = 'Água', userName = '', error = '' } = {}) {
+  if (!water) return `<section class="module-page">${showBack ? '<button class="back-link" type="button" data-action="back-to-profiles">‹ Voltar para alunos</button>' : ''}<h1>${esc(title)}</h1><div class="saude-water-load-error" role="alert"><strong>Não foi possível carregar os dados deste perfil.</strong><p>${esc(error || 'Tente abrir esta tela novamente. Se continuar, confira se o aluno está ativo e vinculado ao seu perfil.')}</p></div></section>`;
   const goal = Number(water.goal_ml || 0);
   const total = Number(water.total_ml || 0);
   const percent = goal ? Math.min(100, Math.round(total / goal * 100)) : 0;
@@ -406,7 +416,7 @@ function renderStudentLanding({ diets = [], water = null } = {}) {
 function renderStudentHome(state) {
   const diets = Array.isArray(state.diets) ? state.diets : [];
   if (state.module === 'water') return renderWater(state.water, { editable: true, title: 'Minha água' });
-  if (state.module === 'diet-detail') return renderDietDetail(state.diet);
+  if (state.module === 'diet-detail') return renderDietDetail(state.diet, { foods: state.foods || [] });
   if (state.module === 'diets') return renderDietsList(state.profiles, diets, state.selectedUserId, true);
   return renderStudentLanding({ diets, water: state.water });
 }
@@ -422,6 +432,12 @@ function ensureWaterDropStyles() {
     const style = document.createElement('style');
     style.id = 'ritmo-admin-metrics-styles';
     style.textContent = `.saude-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:20px 0}.saude-metric-grid article{padding:18px;display:flex;flex-direction:column;gap:8px}.saude-metric-grid small{color:#64748b}.saude-metric-grid strong{font-size:1.35rem;color:#111827}.saude-metric-chart{height:150px;display:flex;align-items:flex-end;gap:2px;padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden}.saude-metric-bar{flex:1;min-width:2px;background:#d20a0a;border-radius:3px 3px 0 0}.saude-metric-bar.has-errors{background:#f59e0b}.saude-metric-legend{display:flex;justify-content:space-between;color:#64748b;font-size:.8rem;padding:8px 2px}`;
+    document.head.append(style);
+  }
+  if (!document.getElementById('ritmo-diet-nutrition-styles')) {
+    const style = document.createElement('style');
+    style.id = 'ritmo-diet-nutrition-styles';
+    style.textContent = DIET_NUTRITION_STYLES;
     document.head.append(style);
   }
 }
@@ -505,7 +521,7 @@ function renderAdminHome({ accounts = [], metrics = null } = {}) {
   </section>`;
 }
 
-export function renderSaudeContent(container, { state, onNavigate, onCreateDiet, onDeleteDiet, onEditDiet, onWaterGoal, onWaterAmount, onCreateAccount, onEditAccount, onDeleteAccount, onAccountAccess, onSaveTemplate, onDeleteTemplate, onUseTemplate, onLogout }) {
+export function renderSaudeContent(container, { state, onNavigate, onCreateDiet, onDeleteDiet, onEditDiet, onSetDietVisibility, onWaterGoal, onWaterAmount, onCreateAccount, onEditAccount, onDeleteAccount, onAccountAccess, onSaveTemplate, onDeleteTemplate, onUseTemplate, onLogout }) {
   const admin = state.user?.role === 'admin';
   const professor = state.user?.role === 'professor';
   const homeModule = 'home';
@@ -534,9 +550,9 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     else if (state.module === 'editTemplate') content = renderDietEditor({ templateMode: true, editing: true, foods: state.foods || [], diet: state.templateDraft || state.template });
     else if (state.module === 'template-detail') content = renderTemplateDetail(state.template);
     else if (state.module === 'portfolio') content = renderPortfolio(state.templates || []);
-    else if (state.module === 'diet-detail') content = renderDietDetail(state.diet, { editable: true, profile, showWeek: true });
+    else if (state.module === 'diet-detail') content = renderDietDetail(state.diet, { editable: true, profile, showWeek: true, foods: state.foods || [] });
     else if (state.module === 'diets') content = renderDietsList(state.profiles, state.diets, state.selectedUserId);
-    else if (state.module === 'monitor') content = renderWater(state.monitor?.water, { editable: false, canSetGoal: true, showBack: true, userId: state.monitor?.user?.id || state.selectedUserId, title: 'Água', userName: profileName(state.monitor?.user || profile) });
+    else if (state.module === 'monitor') content = renderWater(state.monitor?.water, { editable: false, canSetGoal: true, showBack: true, userId: state.monitor?.user?.id || state.selectedUserId, title: 'Água', userName: profileName(state.monitor?.user || profile), error: state.moduleError });
     else if (state.module === 'users') content = renderProfessorProfiles(state.profiles, state.selectedUserId);
     else content = renderProfessorHome({ profiles: state.profiles || [], templates: state.templates || [] });
   } else content = renderStudentHome(state);
@@ -568,6 +584,10 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     state.notice = '';
     publishNotice(pendingNotice);
   }
+
+  container.querySelectorAll('[data-action="toggle-diet-visibility"]').forEach((button) => button.addEventListener('click', () => {
+    onSetDietVisibility?.(button.dataset.id, state.selectedUserId, button.dataset.visible !== 'true');
+  }));
 
   container.querySelectorAll('[data-module]').forEach((button) => button.addEventListener('click', () => onNavigate?.(button.dataset.module)));
   const setDrillOpen = (drill, open) => {
@@ -702,7 +722,6 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     const payload = {
       ...(editingId ? { id: editingId } : {}),
       user_id: String(form.get('user_id') || state.selectedUserId),
-      visible_to_student: formElement.querySelector('[name="visible_to_student"]')?.checked === true,
       titulo: String(form.get('titulo') || '').trim(),
       objetivo: String(form.get('objetivo') || '').trim(),
       observacoes: String(form.get('observacoes') || '').trim(),

@@ -4,7 +4,7 @@ import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
 import { renderPasswordChange, showWelcome } from './auth/firstAccess.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
+const state={user:null,module:'users',loading:false,moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
 async function request(url,options={}){const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options});const data=await r.json();if(!r.ok)throw Error(data.error||'Ação indisponível.');return data;}
 const mutate=(resource,method,body)=>request(`/api/saude?resource=${resource}`,{method,body:JSON.stringify(body)});
 const initialModule=()=>'home';
@@ -24,7 +24,7 @@ async function logout(){await request('/api/auth?resource=logout',{method:'POST'
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{try{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}catch(e){passwordChange(e.message);}}});}
 function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{try{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}catch(e){auth(e.message);}}});}
 async function load(module,targetId=''){
- const previousModule=state.module;state.module=module;state.notice='';
+ const previousModule=state.module;state.module=module;state.notice='';state.moduleError='';
  state.foodItemContext=null;
  if(module!==previousModule){state.dietDraft=null;state.templateDraft=null;state.dietSourceSelected=false;}
  if(targetId && !['diet-detail','editDiet','template-detail','editTemplate'].includes(module))state.selectedUserId=targetId;
@@ -41,8 +41,9 @@ async function load(module,targetId=''){
     if(metrics)state.metrics=metrics;
    }
   }else if(state.user.role==='professor'){
+   const refreshProfiles=!state.profilesLoaded||['home','users'].includes(module);
    const [profileData,templateData,foodData]=await Promise.all([
-    state.profilesLoaded?Promise.resolve({users:state.profiles}):request('/api/saude?resource=professor-users'),
+    refreshProfiles?request('/api/saude?resource=professor-users'):Promise.resolve({users:state.profiles}),
     state.templatesLoaded?Promise.resolve({templates:state.templates}):request('/api/saude?resource=professor-portfolio'),
     state.foodsLoaded?Promise.resolve({foods:state.foods}):request('/api/saude?resource=professor-alimentos'),
    ]);
@@ -68,12 +69,16 @@ async function load(module,targetId=''){
     state.water=water;
     state.diets=diets.diets;
    }else if(module==='water')state.water=await request('/api/saude?resource=agua');
-   else state.diets=(await request('/api/saude?resource=dietas')).diets;
+   else if(module==='diet-detail'){
+    const data=await request('/api/saude?resource=dietas&nutrition=true');
+    state.diets=data.diets;
+    state.foods=data.foods||[];
+   }else state.diets=(await request('/api/saude?resource=dietas')).diets;
   }
   if(['diet-detail','editDiet'].includes(module))state.diet=state.diets.find(x=>x.id===(targetId||state.diet?.id))||null;
   else if(module==='createDiet'||module==='createTemplate')state.diet=null;
   else state.diet=state.diets[0]||null;
- }catch(e){state.notice={text:e.message,type:'error'};state.diets=[];state.diet=null;state.water=null;state.monitor=null;}
+ }catch(e){state.notice={text:e.message,type:'error'};state.moduleError=e.message;state.diets=[];state.diet=null;state.water=null;state.monitor=null;}
 }
 async function navigate(module,targetId='',afterLoad){
  if(state.loading)return;
@@ -129,8 +134,9 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onSaveTemplate:payload=>(state.templateDraft=payload,action(()=>mutate('professor-portfolio',payload.id?'PATCH':'POST',payload),'portfolio','',payload.id?'Modelo atualizado.':'Modelo criado.')),
  onDeleteTemplate:id=>action(()=>mutate('professor-portfolio','DELETE',{id}),'portfolio','','Modelo excluído.'),
  onUseTemplate:async id=>{const template=state.templates.find(entry=>entry.id===id);if(!template||state.loading)return;const draft=structuredClone(template);delete draft.id;await navigate('createDiet','',()=>{state.dietDraft=draft;state.dietSourceSelected=true;});},
- onCreateDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','POST',payload),'diets',payload.user_id,payload.visible_to_student?'Dieta criada e publicada para o aluno.':'Dieta criada e mantida oculta do aluno.')),
- onEditDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','PATCH',payload),'diets',payload.user_id,payload.visible_to_student?'Dieta atualizada e publicada para o aluno.':'Dieta atualizada e mantida oculta do aluno.')),
+ onCreateDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','POST',payload),'diets',payload.user_id,'Dieta criada. Use o Status na lista para publicá-la ao aluno.')),
+ onEditDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','PATCH',payload),'diets',payload.user_id,'Dieta atualizada.')),
+ onSetDietVisibility:(id,userId,visible)=>action(()=>mutate('professor-dieta','PATCH',{id,user_id:userId,action:'visibility',visible_to_student:visible}),'diets',userId,visible?'Dieta ativada para o aluno.':'Dieta ocultada do aluno.'),
  onDeleteDiet:(id,userId)=>action(()=>mutate('professor-dieta','DELETE',{id,user_id:userId}),'diets',userId,'Dieta excluída.'),
  onWaterGoal:(id,goal,mode='save')=>action(()=>mutate('professor-agua-meta',mode==='delete'?'DELETE':'PATCH',{user_id:id,goal_ml:goal,nome:state.waterGoalName,action:mode}),'monitor',id,mode==='delete'?'Meta de água removida.':'Meta de água salva.'),
  onWaterAmount:amount=>action(()=>mutate('agua-checkin','POST',{amount_ml:amount}),'water','','Consumo registrado!')

@@ -71,11 +71,23 @@ export default async function handler(req, res) {
     }
 
     if (resource === 'dietas' && req.method === 'GET') {
-      return res.json({ diets: await store.getDiets(id) });
+      const diets = await store.getDiets(id);
+      return req.query.nutrition === 'true'
+        ? res.json({ diets, foods: await store.listAlimentos() })
+        : res.json({ diets });
     }
     if (resource === 'professor-dieta' && professor) {
       if (req.method === 'GET') return res.json({ diets: await store.getProfessorDiets(id) });
       const dietId = String(req.body?.id || req.query.id || '');
+      if (req.method === 'PATCH' && req.body.action === 'visibility') {
+        if (!dietId || typeof req.body.visible_to_student !== 'boolean') {
+          return res.status(400).json({ error: 'Informe a dieta e o status de publicação.' });
+        }
+        const result = await store.setDietVisibility(id, dietId, req.body.visible_to_student);
+        return result
+          ? res.json(result)
+          : res.status(404).json({ error: 'Dieta não encontrada para este aluno.' });
+      }
       if (req.method === 'DELETE') {
         return (await store.deleteDiet(id, dietId))
           ? res.json({ ok: true })

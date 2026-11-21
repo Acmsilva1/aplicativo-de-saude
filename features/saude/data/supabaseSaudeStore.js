@@ -442,6 +442,17 @@ export const supabaseSaudeStore = {
     return loadDietRows(id, { includeHidden: true });
   },
 
+  async setDietVisibility(userId, dietId, visible) {
+    const { data, error } = await db().from('health_diet_plans')
+      .update({ status: visible ? 'active' : 'archived', updated_at: new Date().toISOString() })
+      .eq('id', dietId)
+      .eq('user_id', userId)
+      .select('id, status')
+      .maybeSingle();
+    if (error) throw error;
+    return data ? { id: data.id, visible_to_student: data.status === 'active' } : null;
+  },
+
   async getDiet(id, dietId) {
     const diets = await loadDietRows(id, { includeHidden: true });
     return diets.find((x) => x.id === dietId) || diets[0] || null;

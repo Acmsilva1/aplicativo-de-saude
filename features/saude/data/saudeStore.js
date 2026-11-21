@@ -27,6 +27,7 @@ export const saudeStore = {
   getProfessorDiets: (...args) => call('getProfessorDiets', ...args),
   getDiet: (...args) => call('getDiet', ...args),
   saveDiet: (...args) => call('saveDiet', ...args),
+  setDietVisibility: (...args) => call('setDietVisibility', ...args),
   deleteDiet: (...args) => call('deleteDiet', ...args),
   getWater: (...args) => call('getWater', ...args),
   setWaterGoal: (...args) => call('setWaterGoal', ...args),
