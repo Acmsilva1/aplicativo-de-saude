@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     if (resource === 'accounts' && req.method === 'POST') {
       const result = await createAccount(req.body || {});
       return result.account
-        ? res.status(201).json({ account: result.account })
+        ? res.status(201).json({ account: result.account, initialPassword: result.initialPassword })
         : res.status(400).json({ error: result.error || 'Informe nome, e-mail único e perfil Professor ou Aluno.' });
     }
     if (resource === 'accounts' && req.method === 'PATCH') {

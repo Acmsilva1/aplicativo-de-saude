@@ -1,9 +1,14 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { getSupabaseAdmin, getSupabaseAnon } from '../../../lib/supabase.js';
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
-const INITIAL_PASSWORD = process.env.INITIAL_ACCOUNT_PASSWORD || '';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
+const temporaryPasswordDigest = (password) => createHash('sha256').update(password).digest('hex');
+const matchesDigest = (password, digest) => {
+  if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/i.test(digest)) return false;
+  return timingSafeEqual(Buffer.from(temporaryPasswordDigest(password), 'hex'), Buffer.from(digest, 'hex'));
+};
 
 function publicAccount(row, professorName = '') {
   if (!row) return null;
@@ -137,13 +142,22 @@ export async function changePassword(req, res, password) {
   const user = await getUser(req, res);
   if (!user) return null;
   const next = String(password || '');
-  if (next.length < 8 || next.length > 80 || next === INITIAL_PASSWORD) return null;
+  if (next.length < 8 || next.length > 80) return null;
 
   const raw = decodeSession(readCookie(req, SESSION_COOKIE));
   if (!raw?.access_token) return null;
 
   const admin = getSupabaseAdmin();
-  const { error } = await admin.auth.admin.updateUserById(user.id, { password: next });
+  const { data: authData, error: authLookupError } = await admin.auth.admin.getUserById(user.id);
+  if (authLookupError || !authData?.user) return null;
+  const appMetadata = authData.user.app_metadata || {};
+  if (matchesDigest(next, appMetadata.initial_password_digest)) return null;
+  const nextAppMetadata = { ...appMetadata };
+  delete nextAppMetadata.initial_password_digest;
+  const { error } = await admin.auth.admin.updateUserById(user.id, {
+    password: next,
+    app_metadata: nextAppMetadata,
+  });
   if (error) return null;
 
   const { error: roleErr } = await admin
@@ -226,9 +240,6 @@ export async function listAvailableStudents(professorId = '') {
 }
 
 export async function createAccount({ name, email, role, professor_id }) {
-  if (INITIAL_PASSWORD.length < 8) {
-    return { error: 'O administrador precisa configurar INITIAL_ACCOUNT_PASSWORD com pelo menos 8 caracteres no ambiente seguro.' };
-  }
   const n = String(name || '').trim().slice(0, 80);
   const e = String(email || '').trim().toLowerCase();
   if (!n || !['professor', 'student'].includes(role) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
@@ -240,6 +251,7 @@ export async function createAccount({ name, email, role, professor_id }) {
   }
 
   const admin = getSupabaseAdmin();
+  const initialPassword = randomBytes(24).toString('base64url');
   const { data: existing } = await admin
     .from('health_user_profiles')
     .select('user_id')
@@ -249,7 +261,7 @@ export async function createAccount({ name, email, role, professor_id }) {
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: e,
-    password: INITIAL_PASSWORD,
+    password: initialPassword,
     email_confirm: true,
     user_metadata: { name: n, role },
   });
@@ -258,6 +270,16 @@ export async function createAccount({ name, email, role, professor_id }) {
   }
 
   const userId = created.user.id;
+  const appMetadata = {
+    ...(created.user.app_metadata || {}),
+    initial_password_digest: temporaryPasswordDigest(initialPassword),
+  };
+  const { error: metadataErr } = await admin.auth.admin.updateUserById(userId, { app_metadata: appMetadata });
+  if (metadataErr) {
+    await admin.auth.admin.deleteUser(userId);
+    return { error: metadataErr.message || 'Falha ao preparar a senha inicial.' };
+  }
+
   const { error: profileErr } = await admin.from('health_user_profiles').insert({
     user_id: userId,
     nome: n,
@@ -282,7 +304,7 @@ export async function createAccount({ name, email, role, professor_id }) {
   }
 
   const account = await loadAccount(userId);
-  return { account };
+  return { account, initialPassword };
 }
 
 export async function updateAccount(id, { name, email, role, professor_id }) {

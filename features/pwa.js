@@ -1,3 +1,5 @@
+import appInfo from '../package.json';
+
 function showConnectionStatus(){
  let banner=document.querySelector('#connection-status');
  if(!banner){banner=document.createElement('div');banner.id='connection-status';banner.className='connection-status';banner.setAttribute('role','status');document.body.append(banner);}
@@ -73,6 +75,45 @@ if(import.meta.env.PROD && 'serviceWorker' in navigator){
    .then(registration=>{
     document.documentElement.dataset.pwaState=registration.active?.state || 'registered';
     document.documentElement.dataset.pwaScope=registration.scope;
+    document.documentElement.dataset.appVersion=appInfo.version;
+    let updateNotice=null;
+    let reloadAfterUpdate=false;
+    const showUpdateNotice=()=>{
+     if(!registration.waiting||!navigator.serviceWorker.controller||updateNotice)return;
+     updateNotice=document.createElement('aside');
+     updateNotice.className='pwa-update-notice';
+     updateNotice.setAttribute('role','status');
+     updateNotice.setAttribute('aria-live','polite');
+     updateNotice.innerHTML='<div class="pwa-update-notice__copy"><strong>Atualização disponível</strong><span></span></div><div class="pwa-update-notice__actions"><button class="pwa-update-notice__update" type="button">Atualizar</button><button class="pwa-update-notice__later" type="button">Depois</button></div>';
+     updateNotice.querySelector('.pwa-update-notice__copy span').textContent='Versão '+appInfo.version+' do Ritmo Saúde. Atualize para continuar.';
+     const updateButton=updateNotice.querySelector('.pwa-update-notice__update');
+     updateButton.addEventListener('click',()=>{
+      reloadAfterUpdate=true;
+      updateButton.disabled=true;
+      updateButton.textContent='Atualizando…';
+      registration.waiting?.postMessage({type:'SKIP_WAITING'});
+     });
+     updateNotice.querySelector('.pwa-update-notice__later').addEventListener('click',()=>{
+      updateNotice.remove();
+      updateNotice=null;
+     });
+     document.body.append(updateNotice);
+    };
+    registration.addEventListener('updatefound',()=>{
+     const installing=registration.installing;
+     installing?.addEventListener('statechange',()=>{
+      if(installing.state==='installed')showUpdateNotice();
+     });
+    });
+    if(registration.waiting)showUpdateNotice();
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+     if(!reloadAfterUpdate)return;
+     reloadAfterUpdate=false;
+     window.location.reload();
+    });
+    const checkForUpdate=()=>registration.update().catch(()=>{});
+    window.addEventListener('focus',checkForUpdate);
+    window.setInterval(checkForUpdate,60*60*1000);
    })
    .catch(()=>{document.documentElement.dataset.pwaState='unavailable';console.warn('Não foi possível ativar os recursos offline.');});
  });

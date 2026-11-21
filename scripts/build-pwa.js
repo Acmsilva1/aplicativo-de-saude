@@ -2,9 +2,12 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const entries = await readdir('dist/assets');
 const assets = ['/', '/index.html', '/manifest.webmanifest', '/icons/health-180.png', '/icons/health-192.png', '/icons/health-512.png', ...entries.map(name=>`/assets/${name}`)];
-const version=createHash('sha256').update(await readFile('dist/index.html')).digest('hex').slice(0,12);
+const appInfo=JSON.parse(await readFile('package.json','utf8'));
+const contentHash=createHash('sha256').update(await readFile('dist/index.html')).digest('hex').slice(0,12);
+const version=`${appInfo.version}-${contentHash}`;
 await writeFile('dist/sw.js',`const CACHE='ritmo-shell-${version}';
 const ASSETS=${JSON.stringify(assets)};
+self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('ritmo-shell-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
@@ -14,4 +17,4 @@ self.addEventListener('fetch',event=>{
  if(ASSETS.includes(url.pathname))event.respondWith(caches.open(CACHE).then(cache=>cache.match(event.request).then(hit=>hit||fetch(event.request))));
 });
 `);
-console.log(`PWA: ${assets.length} arquivos públicos no cache ${version}; APIs excluídas.`);
+console.log(`PWA versão ${appInfo.version}: ${assets.length} arquivos públicos no cache; APIs excluídas.`);

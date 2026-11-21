@@ -102,11 +102,12 @@ export function createDemoAccount({ name, email, role, professor_id }) {
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
   }
+  const initialPassword = randomBytes(24).toString('base64url');
   const account = {
     id: `demo-${randomUUID()}`,
     name: n,
     email: e,
-    password_hash: seedHash,
+    password_hash: hashPassword(initialPassword),
     must_change_password: true,
     role,
     role_label: role === 'professor' ? 'Professor' : 'Aluno',
@@ -114,7 +115,7 @@ export function createDemoAccount({ name, email, role, professor_id }) {
     professor_id: linkId,
   };
   accounts.push(account);
-  return { account: publicAccount(account) };
+  return { account: publicAccount(account), initialPassword };
 }
 
 export function setAccountAccess(id, access) {

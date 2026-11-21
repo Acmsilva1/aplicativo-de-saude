@@ -3,9 +3,8 @@ import '../lib/env.js';
 const base = process.env.E2E_BASE || 'http://127.0.0.1:5198';
 const adminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL || '';
 const adminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD || '';
-const initialPassword = process.env.INITIAL_ACCOUNT_PASSWORD || '';
-if (!adminEmail || !adminPassword || initialPassword.length < 8) {
-  throw new Error('Configure BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD e INITIAL_ACCOUNT_PASSWORD seguro antes do smoke test.');
+if (!adminEmail || !adminPassword) {
+  throw new Error('Configure BOOTSTRAP_ADMIN_EMAIL e BOOTSTRAP_ADMIN_PASSWORD antes do smoke test.');
 }
 const jar = {};
 
@@ -72,7 +71,7 @@ clearJar();
 
 await api('/api/auth?resource=login', {
   method: 'POST',
-  body: JSON.stringify({ email: prof.account.email, password: initialPassword }),
+  body: JSON.stringify({ email: prof.account.email, password: prof.initialPassword }),
 });
 await api('/api/auth?resource=change-password', {
   method: 'POST',
@@ -114,7 +113,7 @@ clearJar();
 
 await api('/api/auth?resource=login', {
   method: 'POST',
-  body: JSON.stringify({ email: aluno.account.email, password: initialPassword }),
+  body: JSON.stringify({ email: aluno.account.email, password: aluno.initialPassword }),
 });
 await api('/api/auth?resource=change-password', {
   method: 'POST',

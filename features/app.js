@@ -46,10 +46,46 @@ async function load(module,targetId=''){
  }catch(e){state.notice={text:e.message,type:'error'};state.diets=[];state.diet=null;state.water=null;state.monitor=null;}
 }
 async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){try{await work();await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}render();}
+function showInitialPasswordDialog(account,password){
+ const dialog=document.createElement('dialog');
+ dialog.className='initial-password-dialog';
+ dialog.setAttribute('aria-labelledby','initial-password-title');
+ dialog.innerHTML='<span class="eyebrow">ACESSO CRIADO</span><h2 id="initial-password-title">Senha temporária</h2><p data-initial-password-account></p><label for="initial-account-password">Senha inicial</label><input id="initial-account-password" type="text" readonly autocomplete="off"><p class="initial-password-dialog__hint">Compartilhe em um canal privado. O usuário deverá criar uma nova senha no primeiro acesso.</p><div class="initial-password-dialog__actions"><button type="button" class="saude-btn saude-btn--primary" data-copy-initial-password>Copiar senha</button><button type="button" class="saude-btn" data-close-initial-password>Fechar</button></div>';
+ dialog.querySelector('[data-initial-password-account]').textContent='A senha de '+account.name+' será exibida somente agora.';
+ const input=dialog.querySelector('#initial-account-password');
+ input.value=password;
+ const copyButton=dialog.querySelector('[data-copy-initial-password]');
+ copyButton.addEventListener('click',async()=>{
+  try{
+   await navigator.clipboard.writeText(password);
+   copyButton.textContent='Senha copiada';
+  }catch{
+   input.select();
+   copyButton.textContent='Selecione e copie';
+  }
+ });
+ dialog.querySelector('[data-close-initial-password]').addEventListener('click',()=>dialog.close());
+ dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+ document.body.append(dialog);
+ dialog.showModal();
+ copyButton.focus();
+}
+async function createAccount(payload){
+ try{
+  const result=await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
+  await load('accounts');
+  state.notice={text:'Conta criada. A senha inicial é exibida uma única vez.',type:'success'};
+  render();
+  showInitialPasswordDialog(result.account,result.initialPassword);
+ }catch(error){
+  state.notice={text:error.message,type:'error'};
+  render();
+ }
+}
 function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();renderSaudeContent(app,{state,
  onNavigate:async(module,targetId)=>{await load(module,targetId);render();},
  onLogout:logout,
- onCreateAccount:payload=>action(()=>request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)}),'accounts','','Conta criada com sucesso.'),
+ onCreateAccount:payload=>createAccount(payload),
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),
  onEditAccount:payload=>action(async()=>{const result=await request('/api/auth?resource=accounts',{method:'PATCH',body:JSON.stringify(payload)});if(result.account.id===state.user.id)state.user=result.account;},'accounts','','Conta atualizada.'),
  onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','','Conta excluída.'),

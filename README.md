@@ -25,10 +25,11 @@ com seu e-mail e uma senha forte. Antes de executar, substitua `EMAIL_DO_ADMIN_A
 e `NOME_DO_ADMIN_AQUI` em `supabase/seed/admin.sql` pelos seus dados. Depois cole
 o arquivo no SQL Editor do projeto e execute. O SQL vincula essa
 conta Auth ao perfil `admin` e não altera a senha. Exige as migrations aplicadas.
-Cadastre as outras contas pelo módulo Administração. Antes, configure
-`INITIAL_ACCOUNT_PASSWORD` com uma senha temporária forte no `.env` da VM; sem
-essa configuração, o cadastro é bloqueado. A senha inicial é compartilhada e
-exige troca no primeiro acesso. Também existe o comando `npm run seed:admin`.
+Cadastre as outras contas pelo módulo Administração. Cada conta recebe uma senha
+temporária forte gerada individualmente, exibida uma única vez ao administrador
+no momento do cadastro e obrigatoriamente trocada no primeiro acesso. O admin
+criado pelo seed mantém a senha definida no Supabase. Também existe o comando
+`npm run seed:admin`.
 
 ## Local
 
