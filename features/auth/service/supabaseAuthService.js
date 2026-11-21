@@ -211,13 +211,16 @@ export async function listUsers() {
     .order('created_at', { ascending: true });
   if (error) throw error;
   const ids = (roles || []).map((r) => r.user_id);
-  const { data: profiles } = await db
-    .from('health_user_profiles')
-    .select('user_id, nome, email')
-    .in('user_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
-  const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
   const professorIds = [...new Set((roles || []).map((r) => r.professor_id).filter(Boolean))];
-  const professorNames = await listProfessorNames(professorIds);
+  const [{ data: profiles, error: profileErr }, professorNames] = await Promise.all([
+    db
+      .from('health_user_profiles')
+      .select('user_id, nome, email')
+      .in('user_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']),
+    listProfessorNames(professorIds),
+  ]);
+  if (profileErr) throw profileErr;
+  const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
   return (roles || []).map((role) => {
     const profile = profileMap.get(role.user_id) || {};
     return publicAccount({

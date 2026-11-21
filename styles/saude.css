@@ -1816,9 +1816,59 @@ body {
   border: 1px solid #0000;
 }
 .content-wrap {
+  position: relative;
   background: 0 0;
   min-height: calc(100vh - 148px);
   padding: 14px 18px 54px;
+}
+.navigation-loading {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 16px;
+  background: #07143435;
+  backdrop-filter: blur(2px);
+}
+.navigation-loading__card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 210px;
+  padding: 14px 18px;
+  border: 1px solid #dce5df;
+  border-radius: 14px;
+  background: #fff;
+  color: #1d3228;
+  box-shadow: 0 12px 34px #07143435;
+}
+.navigation-loading__card>span:last-child {
+  display: grid;
+  gap: 3px;
+}
+.navigation-loading__card strong {
+  font-size: 13px;
+}
+.navigation-loading__card small {
+  color: #68796f;
+  font-size: 11px;
+}
+.navigation-loading__spinner {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 2px solid #efd0d0;
+  border-top-color: #c90018;
+  border-radius: 50%;
+  animation: navigation-spin .75s linear infinite;
+}
+@keyframes navigation-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .navigation-loading__spinner { animation-duration: 1.8s; }
 }
 .module-page {
   color: #101827;

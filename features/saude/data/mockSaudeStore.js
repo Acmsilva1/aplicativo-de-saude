@@ -26,6 +26,8 @@ export const mockSaudeStore = {
  saveTemplate(ownerId,input,id){const list=templatesFor(ownerId);const index=list.findIndex(x=>x.id===id);if(id&&index<0)return null;const template=buildDiet(input,id);if(index<0)list.push(template);else list[index]=template;return structuredClone(template);},
  deleteTemplate(ownerId,id){const list=templatesFor(ownerId);const index=list.findIndex(x=>x.id===id);if(index<0)return false;list.splice(index,1);return true;},
  getProfessorUsers(professorId){return listAvailableStudents(professorId).map(p=>({...p,diet_title:dataFor(p.id).diets[0]?.titulo||'Sem dieta',diet_count:dataFor(p.id).diets.length,water:this.getWater(p.id)}));},
+ getProfessorDietSummaries(professorId,studentId){if(!listAvailableStudents(professorId).some(p=>p.id===studentId))return null;return dataFor(studentId).diets.map(({id,titulo,objetivo,observacoes,meta_calorias,semanal,updated_at})=>({id,titulo,objetivo,observacoes,meta_calorias,semanal,updated_at}));},
+ getProfessorWater(professorId,studentId){const user=listAvailableStudents(professorId).find(p=>p.id===studentId);return user?{user,water:this.getWater(studentId)}:null;},
  canUserAccess(id){return listAvailableStudents().some(p=>p.id===id&&p.access);},
  hasStudent(id,professorId){return listAvailableStudents(professorId).some(p=>p.id===id);},
  getDiets(id){return structuredClone(dataFor(id).diets);},

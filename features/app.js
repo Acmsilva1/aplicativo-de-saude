@@ -4,15 +4,23 @@ import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
 import { renderPasswordChange, showWelcome } from './auth/firstAccess.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
+const state={user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
 async function request(url,options={}){const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options});const data=await r.json();if(!r.ok)throw Error(data.error||'Ação indisponível.');return data;}
 const mutate=(resource,method,body)=>request(`/api/saude?resource=${resource}`,{method,body:JSON.stringify(body)});
 const initialModule=()=>'home';
 async function enter(){
  const dismiss=showWelcome(state.user);
- try{if(!state.user.must_change_password)await load(initialModule());render();}finally{dismiss();}
+ try{
+  if(!state.user.must_change_password){
+   state.loading=true;
+   render();
+   await load(initialModule());
+   state.loading=false;
+  }
+  render();
+ }finally{state.loading=false;dismiss();}
 }
-async function logout(){await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''});auth();}
+async function logout(){await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''});auth();}
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{try{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}catch(e){passwordChange(e.message);}}});}
 function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{try{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}catch(e){auth(e.message);}}});}
 async function load(module,targetId=''){
@@ -49,7 +57,10 @@ async function load(module,targetId=''){
    if(module==='createTemplate')state.template=null;
    const requests=[];
    if(module==='monitor')requests.push(request(`/api/saude?resource=professor-agua&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{state.monitor=data;}));
-   if(['diets','diet-detail','editDiet'].includes(module))requests.push(request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{state.diets=data.diets;}));
+   if(['diets','diet-detail','editDiet'].includes(module)){
+    const summary=module==='diets'?'&summary=true':'';
+    requests.push(request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}${summary}`).then(data=>{state.diets=data.diets;}));
+   }
    await Promise.all(requests);
   }else{
    if(module==='home'){
@@ -64,7 +75,13 @@ async function load(module,targetId=''){
   else state.diet=state.diets[0]||null;
  }catch(e){state.notice={text:e.message,type:'error'};state.diets=[];state.diet=null;state.water=null;state.monitor=null;}
 }
-async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}render();}
+async function navigate(module,targetId='',afterLoad){
+ if(state.loading)return;
+ state.loading=true;
+ render();
+ try{await load(module,targetId);afterLoad?.();}finally{state.loading=false;render();}
+}
+async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
 function showInitialPasswordDialog(account,password){
  const dialog=document.createElement('dialog');
  dialog.className='initial-password-dialog';
@@ -103,7 +120,7 @@ async function createAccount(payload){
  }
 }
 function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();renderSaudeContent(app,{state,
- onNavigate:async(module,targetId)=>{await load(module,targetId);render();},
+ onNavigate:navigate,
  onLogout:logout,
  onCreateAccount:payload=>createAccount(payload),
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),
@@ -111,7 +128,7 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','','Conta excluída.'),
  onSaveTemplate:payload=>(state.templateDraft=payload,action(()=>mutate('professor-portfolio',payload.id?'PATCH':'POST',payload),'portfolio','',payload.id?'Modelo atualizado.':'Modelo criado.')),
  onDeleteTemplate:id=>action(()=>mutate('professor-portfolio','DELETE',{id}),'portfolio','','Modelo excluído.'),
- onUseTemplate:async id=>{const template=state.templates.find(entry=>entry.id===id);if(!template)return;const draft=structuredClone(template);delete draft.id;state.dietDraft=null;state.foodItemContext=null;await load('createDiet');state.templateDraft=draft;state.dietDraft=null;state.dietSourceSelected=true;render();},
+ onUseTemplate:async id=>{const template=state.templates.find(entry=>entry.id===id);if(!template||state.loading)return;const draft=structuredClone(template);delete draft.id;await navigate('createDiet','',()=>{state.dietDraft=draft;state.dietSourceSelected=true;});},
  onCreateDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','POST',payload),'diets',payload.user_id,'Dieta criada com sucesso.')),
  onEditDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','PATCH',payload),'diets',payload.user_id,'Dieta atualizada.')),
  onDeleteDiet:(id,userId)=>action(()=>mutate('professor-dieta','DELETE',{id,user_id:userId}),'diets',userId,'Dieta excluída.'),

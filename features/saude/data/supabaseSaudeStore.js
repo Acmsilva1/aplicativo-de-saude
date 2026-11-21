@@ -304,18 +304,115 @@ export const supabaseSaudeStore = {
 
   async getProfessorUsers(professorId) {
     const students = await listAvailableStudents(professorId);
-    const result = [];
-    for (const student of students) {
-      const diets = await this.getDiets(student.id);
-      const water = await this.getWater(student.id);
-      result.push({
-        ...student,
-        diet_title: diets[0]?.titulo || 'Sem dieta',
-        diet_count: diets.length,
-        water,
-      });
+    if (!students.length) return [];
+    const ids = students.map((student) => student.id);
+    const recentSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const [plansResult, goalsResult, entriesResult] = await Promise.all([
+      db().from('health_diet_plans')
+        .select('user_id, title, updated_at')
+        .in('user_id', ids)
+        .eq('status', 'active')
+        .order('updated_at', { ascending: false }),
+      db().from('health_water_goals')
+        .select('user_id, goal_ml, nome')
+        .in('user_id', ids),
+      db().from('health_water_entries')
+        .select('user_id, amount_ml, recorded_at')
+        .in('user_id', ids)
+        .gte('recorded_at', recentSince),
+    ]);
+    if (plansResult.error) throw plansResult.error;
+    if (goalsResult.error) throw goalsResult.error;
+    if (entriesResult.error) throw entriesResult.error;
+
+    const dietStats = new Map();
+    for (const plan of plansResult.data || []) {
+      const stats = dietStats.get(plan.user_id) || { title: 'Sem dieta', count: 0 };
+      stats.count += 1;
+      if (stats.count === 1) stats.title = plan.title || 'Sem dieta';
+      dietStats.set(plan.user_id, stats);
     }
-    return result;
+    const goalByStudent = new Map((goalsResult.data || []).map((goal) => [goal.user_id, goal]));
+    const today = todayDietDate();
+    const waterToday = new Map();
+    for (const entry of entriesResult.data || []) {
+      if (localDateFromTs(entry.recorded_at) !== today) continue;
+      waterToday.set(entry.user_id, (waterToday.get(entry.user_id) || 0) + Number(entry.amount_ml || 0));
+    }
+
+    return students.map((student) => {
+      const diets = dietStats.get(student.id) || { title: 'Sem dieta', count: 0 };
+      const goal = goalByStudent.get(student.id);
+      return {
+        ...student,
+        diet_title: diets.title,
+        diet_count: diets.count,
+        water: {
+          goal_ml: goal?.goal_ml ?? null,
+          nome: goal?.nome || 'Hidratação diária',
+          total_ml: waterToday.get(student.id) || 0,
+        },
+      };
+    });
+  },
+
+  async getProfessorDietSummaries(professorId, studentId) {
+    const [roleResult, plansResult] = await Promise.all([
+      db().from('health_user_roles')
+        .select('user_id')
+        .eq('user_id', studentId)
+        .eq('role', 'student')
+        .eq('professor_id', professorId)
+        .eq('access_enabled', true)
+        .maybeSingle(),
+      db().from('health_diet_plans')
+        .select('id, title, objective, notes, meta_calorias, semanal, updated_at')
+        .eq('user_id', studentId)
+        .eq('status', 'active')
+        .order('updated_at', { ascending: false }),
+    ]);
+    if (roleResult.error) throw roleResult.error;
+    if (plansResult.error) throw plansResult.error;
+    if (!roleResult.data) return null;
+    return (plansResult.data || []).map((plan) => ({
+      id: plan.id,
+      titulo: plan.title,
+      objetivo: plan.objective || '',
+      observacoes: plan.notes || '',
+      meta_calorias: plan.meta_calorias,
+      semanal: plan.semanal === true,
+      updated_at: String(plan.updated_at || '').slice(0, 10),
+    }));
+  },
+
+  async getProfessorWater(professorId, studentId) {
+    const { data: role, error: roleErr } = await db().from('health_user_roles')
+      .select('user_id')
+      .eq('user_id', studentId)
+      .eq('role', 'student')
+      .eq('professor_id', professorId)
+      .eq('access_enabled', true)
+      .maybeSingle();
+    if (roleErr) throw roleErr;
+    if (!role) return null;
+    const [{ data: profile, error: profileErr }, water] = await Promise.all([
+      db().from('health_user_profiles').select('nome, email').eq('user_id', studentId).maybeSingle(),
+      this.getWater(studentId),
+    ]);
+    if (profileErr) throw profileErr;
+    if (!profile) return null;
+    return {
+      user: {
+        id: studentId,
+        role: 'student',
+        professor_id: professorId,
+        role_label: 'Aluno',
+        access: true,
+        name: profile.nome || '',
+        email: profile.email,
+      },
+      water,
+    };
   },
 
   async canUserAccess(id) {
@@ -324,8 +421,16 @@ export const supabaseSaudeStore = {
   },
 
   async hasStudent(id, professorId) {
-    const students = await listAvailableStudents(professorId);
-    return students.some((p) => p.id === id);
+    if (!id || !professorId) return false;
+    const { data, error } = await db().from('health_user_roles')
+      .select('user_id')
+      .eq('user_id', id)
+      .eq('role', 'student')
+      .eq('professor_id', professorId)
+      .eq('access_enabled', true)
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data);
   },
 
   async getDiets(id) {
@@ -394,19 +499,21 @@ export const supabaseSaudeStore = {
 
   async getWater(id) {
     const date = todayDietDate();
-    const { data: goalRow } = await db()
-      .from('health_water_goals')
-      .select('*')
-      .eq('user_id', id)
-      .maybeSingle();
-
-    const { data: entries, error } = await db()
-      .from('health_water_entries')
-      .select('*')
-      .eq('user_id', id)
-      .order('recorded_at', { ascending: false })
-      .limit(500);
-    if (error) throw error;
+    const [goalResult, entriesResult] = await Promise.all([
+      db().from('health_water_goals')
+        .select('*')
+        .eq('user_id', id)
+        .maybeSingle(),
+      db().from('health_water_entries')
+        .select('*')
+        .eq('user_id', id)
+        .order('recorded_at', { ascending: false })
+        .limit(500),
+    ]);
+    if (goalResult.error) throw goalResult.error;
+    if (entriesResult.error) throw entriesResult.error;
+    const goalRow = goalResult.data;
+    const entries = entriesResult.data;
 
     const mapped = (entries || []).map((entry) => ({
       id: entry.id,

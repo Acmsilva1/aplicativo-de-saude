@@ -29,6 +29,18 @@ export default async function handler(req, res) {
     if (resource === 'professor-users' && professor && req.method === 'GET') {
       return res.json({ users: await store.getProfessorUsers(user.id) });
     }
+    if (resource === 'professor-dieta' && professor && req.method === 'GET' && req.query.summary === 'true') {
+      const diets = await store.getProfessorDietSummaries(user.id, id);
+      return diets
+        ? res.json({ diets })
+        : res.status(404).json({ error: 'Aluno não encontrado ou não vinculado ao seu perfil de professor.' });
+    }
+    if (resource === 'professor-agua' && professor && req.method === 'GET') {
+      const result = await store.getProfessorWater(user.id, id);
+      return result
+        ? res.json(result)
+        : res.status(404).json({ error: 'Aluno não encontrado ou não vinculado ao seu perfil de professor.' });
+    }
     if (resource === 'professor-alimentos' && professor && req.method === 'GET') {
       return res.json({ foods: await store.listAlimentos() });
     }
@@ -81,10 +93,6 @@ export default async function handler(req, res) {
           ? res.status(req.method === 'POST' ? 201 : 200).json(result)
           : res.status(404).json({ error: 'Dieta não encontrada.' });
       }
-    }
-    if (resource === 'professor-agua' && professor && req.method === 'GET') {
-      const users = await store.getProfessorUsers(user.id);
-      return res.json({ user: users.find((x) => x.id === id), water: await store.getWater(id) });
     }
     if (resource === 'professor-agua-meta' && professor) {
       if (req.method === 'DELETE' || (req.method === 'PATCH' && req.body.action === 'delete')) {
