@@ -37,11 +37,8 @@ jobs:
           set -Eeuo pipefail
           app_dir=/opt/ritmo-saude
           test -f "$app_dir/.env" || { echo 'Arquivo /opt/ritmo-saude/.env ausente.' >&2; exit 1; }
+          archive="/opt/ritmo-deploy-inbox/ritmo-saude-${GITHUB_SHA}.tar.gz"
+          trap 'rm -f "$archive"' EXIT
           tar --exclude=.git --exclude=node_modules --exclude=.env --exclude='.env.*' \
-            -czf "$RUNNER_TEMP/ritmo-saude-${GITHUB_SHA}.tar.gz" .
-          tar -xzf "$RUNNER_TEMP/ritmo-saude-${GITHUB_SHA}.tar.gz" -C "$app_dir"
-          chmod 755 "$app_dir"
-          chmod 600 "$app_dir/.env"
-          cd "$app_dir"
-          docker compose up -d --build --force-recreate --remove-orphans --wait --wait-timeout 120
-          docker compose ps
+            -czf "$archive" .
+          sudo /usr/local/sbin/deploy-ritmo-saude "$GITHUB_SHA"
