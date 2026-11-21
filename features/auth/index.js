@@ -1,5 +1,11 @@
 import { showToast } from '../saude/service/uiConfirmation.js';
 
+const LOGIN_PROFILES = {
+  admin: { label: 'Administração', short: 'AD', description: 'Gerencie usuários e acessos da plataforma.' },
+  professor: { label: 'Professor', short: 'PR', description: 'Acompanhe dietas e hidratação dos seus alunos.' },
+  student: { label: 'Aluno', short: 'AL', description: 'Consulte sua rotina de alimentação e hidratação.' },
+};
+
 export function renderLogin(container, { onLogin, error = '' } = {}) {
   container.innerHTML = `
     <main class="login-layout">
@@ -22,6 +28,22 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
           <span class="eyebrow login-eyebrow">BEM-VINDO DE VOLTA</span>
           <h2>Acesse sua rotina</h2>
           <p class="login-subtitle">Entre para abrir seus módulos de saúde.</p>
+          <div class="login-profile-switch">
+            <span class="login-profile-switch__label">Acessar área</span>
+            <details class="login-profile-picker">
+              <summary aria-label="Trocar perfil de acesso">
+                <span class="login-profile-picker__mark" data-profile-mark aria-hidden="true">PR</span>
+                <span data-profile-label>Professor</span>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
+              </summary>
+              <div class="login-profile-menu" role="group" aria-label="Perfis disponíveis">
+                <button type="button" data-login-profile="admin" aria-pressed="false"><span class="login-profile-menu__mark" aria-hidden="true">AD</span><span><strong>Administração</strong><small>Contas e acessos</small></span><span class="login-profile-menu__check" aria-hidden="true">✓</span></button>
+                <button type="button" data-login-profile="professor" aria-pressed="true"><span class="login-profile-menu__mark" aria-hidden="true">PR</span><span><strong>Professor</strong><small>Dietas e acompanhamento</small></span><span class="login-profile-menu__check" aria-hidden="true">✓</span></button>
+                <button type="button" data-login-profile="student" aria-pressed="false"><span class="login-profile-menu__mark" aria-hidden="true">AL</span><span><strong>Aluno</strong><small>Minha rotina de saúde</small></span><span class="login-profile-menu__check" aria-hidden="true">✓</span></button>
+              </div>
+            </details>
+            <p class="login-profile-switch__hint" data-profile-description>${LOGIN_PROFILES.professor.description} Após entrar, a área é definida pelas permissões da sua conta.</p>
+          </div>
           <form id="login-form" class="login-form">
             <label for="email">E-mail</label>
             <input id="email" name="email" type="email" autocomplete="username" placeholder="voce@exemplo.com" required />
@@ -36,6 +58,22 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
 
   if (error) showToast(error, { type: 'error' });
 
+  const profilePicker = container.querySelector('.login-profile-picker');
+  container.querySelectorAll('[data-login-profile]').forEach((option) => {
+    option.addEventListener('click', () => {
+      const profile = LOGIN_PROFILES[option.dataset.loginProfile];
+      if (!profile) return;
+      container.querySelector('[data-profile-label]').textContent = profile.label;
+      container.querySelector('[data-profile-mark]').textContent = profile.short;
+      container.querySelector('[data-profile-description]').textContent = `${profile.description} Após entrar, a área é definida pelas permissões da sua conta.`;
+      container.querySelectorAll('[data-login-profile]').forEach((item) => {
+        item.setAttribute('aria-pressed', String(item === option));
+      });
+      profilePicker.open = false;
+      profilePicker.querySelector('summary').focus();
+    });
+  });
+
   container.querySelector('#login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button');
@@ -45,5 +83,3 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
     await onLogin?.({ email: form.get('email'), password: form.get('password') });
   });
 }
-
-\n

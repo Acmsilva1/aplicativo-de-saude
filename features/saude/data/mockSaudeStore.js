@@ -41,9 +41,3 @@ export const mockSaudeStore = {
  deleteWaterGoal(id){const d=dataFor(id);d.goal=null;return this.getWater(id);},
  addWater(id,amount){const d=dataFor(id);d.entries.push({id:randomUUID(),amount_ml:amount,date:todayDietDate(),time:new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date())});return this.getWater(id);}
 };
-
-
-
-
-
-\n

@@ -63,5 +63,3 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onWaterAmount:amount=>action(()=>mutate('agua-checkin','POST',{amount_ml:amount}),'water','','Consumo registrado!')
  });}
 try{state.user=(await request('/api/auth?resource=session')).user;if(!state.user.must_change_password)await load(initialModule());render();}catch{auth();}
-
-\n

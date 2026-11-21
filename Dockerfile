@@ -12,5 +12,3 @@ COPY lib ./lib
 COPY scripts ./scripts
 EXPOSE 5199
 CMD ["node", "server.js"]
-
-\n

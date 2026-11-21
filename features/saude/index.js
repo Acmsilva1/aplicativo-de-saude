@@ -848,6 +848,3 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     if (event.key === 'Enter' && !event.target.matches('textarea')) event.preventDefault();
   });
 }
-
-
-\n

@@ -215,6 +215,135 @@ a {
   margin: 0 0 29px;
   font-size: 14px;
 }
+.login-profile-switch {
+  margin: 0 0 18px;
+}
+.login-profile-switch__label {
+  display: block;
+  margin-bottom: 7px;
+  color: #50645a;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .02em;
+}
+.login-profile-picker {
+  position: relative;
+}
+.login-profile-picker > summary {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 11px;
+  padding: 0 13px;
+  border: 1px solid #dfe7df;
+  border-radius: 13px;
+  background: #fff;
+  color: #21382e;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  list-style: none;
+  transition: border-color .18s,box-shadow .18s,background .18s;
+}
+.login-profile-picker > summary::-webkit-details-marker {
+  display: none;
+}
+.login-profile-picker > summary:hover,
+.login-profile-picker[open] > summary {
+  border-color: #9ab6a0;
+  box-shadow: 0 0 0 3px #4e855c12;
+}
+.login-profile-picker > summary:focus-visible,
+.login-profile-menu button:focus-visible {
+  outline: 3px solid #6d9b7970;
+  outline-offset: 2px;
+}
+.login-profile-picker > summary > svg {
+  width: 17px;
+  height: 17px;
+  margin-left: auto;
+  fill: none;
+  stroke: #6b7c72;
+  stroke-width: 1.8;
+  transition: transform .18s;
+}
+.login-profile-picker[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.login-profile-picker__mark,
+.login-profile-menu__mark {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 31px;
+  place-items: center;
+  border-radius: 10px;
+  background: #edf3e9;
+  color: #385a42;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+.login-profile-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #e1e8e1;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 16px 36px #102a241f;
+}
+.login-profile-menu button {
+  display: flex;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #263a30;
+  text-align: left;
+  cursor: pointer;
+}
+.login-profile-menu button:hover,
+.login-profile-menu button[aria-pressed="true"] {
+  background: #f2f6ef;
+}
+.login-profile-menu button > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.login-profile-menu strong {
+  font-size: 12px;
+  font-weight: 750;
+}
+.login-profile-menu small {
+  color: #78867d;
+  font-size: 10px;
+}
+.login-profile-menu__check {
+  margin-left: auto;
+  color: #426c4d;
+  font-size: 14px;
+  opacity: 0;
+}
+.login-profile-menu button[aria-pressed="true"] .login-profile-menu__check {
+  opacity: 1;
+}
+.login-profile-switch__hint {
+  margin: 8px 2px 0;
+  color: #78867d;
+  font-size: 10px;
+  line-height: 1.45;
+}
 .login-form {
   gap: 9px;
   display: grid;
