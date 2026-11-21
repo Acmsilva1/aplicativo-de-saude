@@ -68,13 +68,13 @@ function formatTime(value) {
   return text.length >= 5 ? text.slice(0, 5) : text;
 }
 
-async function loadDietRows(userId) {
-  const { data: plans, error } = await db()
+async function loadDietRows(userId, { includeHidden = false } = {}) {
+  let query = db()
     .from('health_diet_plans')
     .select('*')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .order('updated_at', { ascending: false });
+    .eq('user_id', userId);
+  if (!includeHidden) query = query.eq('status', 'active');
+  const { data: plans, error } = await query.order('updated_at', { ascending: false });
   if (error) throw error;
   if (!plans?.length) return [];
 
@@ -125,6 +125,7 @@ async function loadDietRows(userId) {
       observacoes: plan.notes || '',
       meta_calorias: plan.meta_calorias,
       semanal: plan.semanal === true,
+      visible_to_student: plan.status === 'active',
       updated_at: String(plan.updated_at || '').slice(0, 10),
       refeicoes: createEmptyDietMeals(),
     };
@@ -366,9 +367,8 @@ export const supabaseSaudeStore = {
         .eq('access_enabled', true)
         .maybeSingle(),
       db().from('health_diet_plans')
-        .select('id, title, objective, notes, meta_calorias, semanal, updated_at')
+        .select('id, title, objective, notes, meta_calorias, semanal, status, updated_at')
         .eq('user_id', studentId)
-        .eq('status', 'active')
         .order('updated_at', { ascending: false }),
     ]);
     if (roleResult.error) throw roleResult.error;
@@ -381,6 +381,7 @@ export const supabaseSaudeStore = {
       observacoes: plan.notes || '',
       meta_calorias: plan.meta_calorias,
       semanal: plan.semanal === true,
+      visible_to_student: plan.status === 'active',
       updated_at: String(plan.updated_at || '').slice(0, 10),
     }));
   },
@@ -437,8 +438,12 @@ export const supabaseSaudeStore = {
     return loadDietRows(id);
   },
 
+  async getProfessorDiets(id) {
+    return loadDietRows(id, { includeHidden: true });
+  },
+
   async getDiet(id, dietId) {
-    const diets = await loadDietRows(id);
+    const diets = await loadDietRows(id, { includeHidden: true });
     return diets.find((x) => x.id === dietId) || diets[0] || null;
   },
 
@@ -448,13 +453,17 @@ export const supabaseSaudeStore = {
     const admin = db();
 
     if (dietId) {
-      const { data: existing } = await admin
+      const { data: existing, error: existingErr } = await admin
         .from('health_diet_plans')
-        .select('id')
+        .select('id, status')
         .eq('id', dietId)
         .eq('user_id', id)
         .maybeSingle();
+      if (existingErr) throw existingErr;
       if (!existing) return null;
+      const status = typeof input.visible_to_student === 'boolean'
+        ? (input.visible_to_student ? 'active' : 'archived')
+        : existing.status;
       const { error } = await admin
         .from('health_diet_plans')
         .update({
@@ -463,7 +472,7 @@ export const supabaseSaudeStore = {
           notes: diet.observacoes,
           meta_calorias: diet.meta_calorias,
           semanal: diet.semanal,
-          status: 'active',
+          status,
           updated_at: new Date().toISOString(),
         })
         .eq('id', dietId)
@@ -478,7 +487,7 @@ export const supabaseSaudeStore = {
         notes: diet.observacoes,
         meta_calorias: diet.meta_calorias,
         semanal: diet.semanal,
-        status: 'active',
+        status: input.visible_to_student === true ? 'active' : 'archived',
       });
       if (error) throw error;
     }

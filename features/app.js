@@ -81,7 +81,7 @@ async function navigate(module,targetId='',afterLoad){
  render();
  try{await load(module,targetId);afterLoad?.();}finally{state.loading=false;render();}
 }
-async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
+async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;if(['diets','monitor'].includes(module))state.profilesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
 function showInitialPasswordDialog(account,password){
  const dialog=document.createElement('dialog');
  dialog.className='initial-password-dialog';
@@ -129,8 +129,8 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onSaveTemplate:payload=>(state.templateDraft=payload,action(()=>mutate('professor-portfolio',payload.id?'PATCH':'POST',payload),'portfolio','',payload.id?'Modelo atualizado.':'Modelo criado.')),
  onDeleteTemplate:id=>action(()=>mutate('professor-portfolio','DELETE',{id}),'portfolio','','Modelo excluído.'),
  onUseTemplate:async id=>{const template=state.templates.find(entry=>entry.id===id);if(!template||state.loading)return;const draft=structuredClone(template);delete draft.id;await navigate('createDiet','',()=>{state.dietDraft=draft;state.dietSourceSelected=true;});},
- onCreateDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','POST',payload),'diets',payload.user_id,'Dieta criada com sucesso.')),
- onEditDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','PATCH',payload),'diets',payload.user_id,'Dieta atualizada.')),
+ onCreateDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','POST',payload),'diets',payload.user_id,payload.visible_to_student?'Dieta criada e publicada para o aluno.':'Dieta criada e mantida oculta do aluno.')),
+ onEditDiet:payload=>(state.dietDraft=payload,action(()=>mutate('professor-dieta','PATCH',payload),'diets',payload.user_id,payload.visible_to_student?'Dieta atualizada e publicada para o aluno.':'Dieta atualizada e mantida oculta do aluno.')),
  onDeleteDiet:(id,userId)=>action(()=>mutate('professor-dieta','DELETE',{id,user_id:userId}),'diets',userId,'Dieta excluída.'),
  onWaterGoal:(id,goal,mode='save')=>action(()=>mutate('professor-agua-meta',mode==='delete'?'DELETE':'PATCH',{user_id:id,goal_ml:goal,nome:state.waterGoalName,action:mode}),'monitor',id,mode==='delete'?'Meta de água removida.':'Meta de água salva.'),
  onWaterAmount:amount=>action(()=>mutate('agua-checkin','POST',{amount_ml:amount}),'water','','Consumo registrado!')

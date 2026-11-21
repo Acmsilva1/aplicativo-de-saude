@@ -11,7 +11,7 @@ function normalizedMeals(source) {
  return createEmptyDietMeals().map(m=>{const entry=Array.isArray(source)?source.find(x=>x?.tipo===m.tipo):null; return {...m,horario:/^([01]\d|2[0-3]):[0-5]\d$/.test(entry?.horario)?entry.horario:'',itens:(Array.isArray(entry?.itens)?entry.itens:[]).slice(0,80).filter(Boolean).map(x=>({nome:String(x.nome||'').slice(0,160),quantidade:String(x.quantidade||'').slice(0,80),observacao:String(x.observacao||'').slice(0,500),alimento_id:Number.isSafeInteger(Number(x.alimento_id||x.food_id))?Number(x.alimento_id||x.food_id):null,...(Number.isFinite(Number(x.quantidade_valor))&&Number(x.quantidade_valor)>0?{quantidade_valor:Number(x.quantidade_valor),quantidade_unidade:['g','ml','un','porcao'].includes(x.quantidade_unidade)?x.quantidade_unidade:'g'}:{})})).filter(x=>x.nome)};});
 }
 function buildDiet(input,id){
-  const diet={id:id||randomUUID(),titulo:String(input.titulo||input.title||'').trim().slice(0,160),objetivo:String(input.objetivo||input.objective||'').slice(0,240),observacoes:String(input.observacoes||'').slice(0,4000),meta_calorias:input.meta_calorias?Number(input.meta_calorias):null,semanal:input.semanal===true,refeicoes:normalizedMeals(input.refeicoes),updated_at:todayDietDate()};
+  const diet={id:id||randomUUID(),titulo:String(input.titulo||input.title||'').trim().slice(0,160),objetivo:String(input.objetivo||input.objective||'').slice(0,240),observacoes:String(input.observacoes||'').slice(0,4000),meta_calorias:input.meta_calorias?Number(input.meta_calorias):null,semanal:input.semanal===true,visible_to_student:input.visible_to_student===true,refeicoes:normalizedMeals(input.refeicoes),updated_at:todayDietDate()};
   if(diet.semanal)diet.semana=Array.from({length:7},(_,i)=>({refeicoes:normalizedMeals(input.semana?.[i]?.refeicoes||[])}));
  return diet;
 }
@@ -25,12 +25,13 @@ export const mockSaudeStore = {
  getTemplates(ownerId){return structuredClone(templatesFor(ownerId));},
  saveTemplate(ownerId,input,id){const list=templatesFor(ownerId);const index=list.findIndex(x=>x.id===id);if(id&&index<0)return null;const template=buildDiet(input,id);if(index<0)list.push(template);else list[index]=template;return structuredClone(template);},
  deleteTemplate(ownerId,id){const list=templatesFor(ownerId);const index=list.findIndex(x=>x.id===id);if(index<0)return false;list.splice(index,1);return true;},
- getProfessorUsers(professorId){return listAvailableStudents(professorId).map(p=>({...p,diet_title:dataFor(p.id).diets[0]?.titulo||'Sem dieta',diet_count:dataFor(p.id).diets.length,water:this.getWater(p.id)}));},
- getProfessorDietSummaries(professorId,studentId){if(!listAvailableStudents(professorId).some(p=>p.id===studentId))return null;return dataFor(studentId).diets.map(({id,titulo,objetivo,observacoes,meta_calorias,semanal,updated_at})=>({id,titulo,objetivo,observacoes,meta_calorias,semanal,updated_at}));},
+ getProfessorUsers(professorId){return listAvailableStudents(professorId).map(p=>{const diets=dataFor(p.id).diets.filter(diet=>diet.visible_to_student);return {...p,diet_title:diets[0]?.titulo||'Sem dieta',diet_count:diets.length,water:this.getWater(p.id)};});},
+ getProfessorDietSummaries(professorId,studentId){if(!listAvailableStudents(professorId).some(p=>p.id===studentId))return null;return dataFor(studentId).diets.map(({id,titulo,objetivo,observacoes,meta_calorias,semanal,visible_to_student,updated_at})=>({id,titulo,objetivo,observacoes,meta_calorias,semanal,visible_to_student,updated_at}));},
  getProfessorWater(professorId,studentId){const user=listAvailableStudents(professorId).find(p=>p.id===studentId);return user?{user,water:this.getWater(studentId)}:null;},
  canUserAccess(id){return listAvailableStudents().some(p=>p.id===id&&p.access);},
  hasStudent(id,professorId){return listAvailableStudents(professorId).some(p=>p.id===id);},
- getDiets(id){return structuredClone(dataFor(id).diets);},
+ getDiets(id){return structuredClone(dataFor(id).diets.filter(diet=>diet.visible_to_student));},
+ getProfessorDiets(id){return structuredClone(dataFor(id).diets);},
  getDiet(id,dietId){return structuredClone(dataFor(id).diets.find(x=>x.id===dietId)||dataFor(id).diets[0]||null);},
  saveDiet(id,input,dietId){
   const d=dataFor(id);const index=d.diets.findIndex(x=>x.id===dietId);if(dietId&&index<0)return null;

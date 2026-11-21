@@ -74,7 +74,7 @@ export default async function handler(req, res) {
       return res.json({ diets: await store.getDiets(id) });
     }
     if (resource === 'professor-dieta' && professor) {
-      if (req.method === 'GET') return res.json({ diets: await store.getDiets(id) });
+      if (req.method === 'GET') return res.json({ diets: await store.getProfessorDiets(id) });
       const dietId = String(req.body?.id || req.query.id || '');
       if (req.method === 'DELETE') {
         return (await store.deleteDiet(id, dietId))

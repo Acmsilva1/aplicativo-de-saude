@@ -24,6 +24,7 @@ export const saudeStore = {
   canUserAccess: (...args) => call('canUserAccess', ...args),
   hasStudent: (...args) => call('hasStudent', ...args),
   getDiets: (...args) => call('getDiets', ...args),
+  getProfessorDiets: (...args) => call('getProfessorDiets', ...args),
   getDiet: (...args) => call('getDiet', ...args),
   saveDiet: (...args) => call('saveDiet', ...args),
   deleteDiet: (...args) => call('deleteDiet', ...args),
