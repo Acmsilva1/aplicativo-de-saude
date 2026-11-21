@@ -1,0 +1,45 @@
+name: Deploy Ritmo Saúde
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ritmo-saude-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, ritmo-saude-prod]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Build production app and PWA
+        run: |
+          npm ci
+          npm run build
+
+      - name: Rebuild and recreate production container
+        run: |
+          set -Eeuo pipefail
+          app_dir=/opt/ritmo-saude
+          test -f "$app_dir/.env" || { echo 'Arquivo /opt/ritmo-saude/.env ausente.' >&2; exit 1; }
+          tar --exclude=.git --exclude=node_modules --exclude=.env --exclude='.env.*' \
+            -czf "$RUNNER_TEMP/ritmo-saude-${GITHUB_SHA}.tar.gz" .
+          tar -xzf "$RUNNER_TEMP/ritmo-saude-${GITHUB_SHA}.tar.gz" -C "$app_dir"
+          cd "$app_dir"
+          docker compose up -d --build --force-recreate --remove-orphans --wait --wait-timeout 120
+          docker compose ps

@@ -1,0 +1,12 @@
+{
+ "id":"/", "name":"Ritmo Saúde", "short_name":"Ritmo Saúde",
+ "description":"Dieta e hidratação, no seu ritmo.", "lang":"pt-BR",
+ "start_url":"/", "scope":"/", "display":"standalone",
+ "display_override":["standalone","minimal-ui"], "orientation":"portrait-primary",
+ "theme_color":"#cc0000", "background_color":"#071434",
+ "prefer_related_applications":false,
+ "icons":[
+  {"src":"/icons/health-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+  {"src":"/icons/health-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+ ]
+}
