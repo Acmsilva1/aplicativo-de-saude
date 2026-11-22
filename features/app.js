@@ -6,7 +6,19 @@ import { renderSaudeContent } from './saude/index.js';
 import { renderPasswordChange, showWelcome } from './auth/firstAccess.js';
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
-async function request(url,options={}){const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options});const data=await r.json();if(!r.ok)throw Error(data.error||'Ação indisponível.');return data;}
+async function request(url,options={}){
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),20000);
+ try{
+  const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options,signal:controller.signal});
+  const data=await r.json();
+  if(!r.ok)throw Error(data.error||'Ação indisponível.');
+  return data;
+ }catch(error){
+  if(controller.signal.aborted)throw Error('O servidor demorou para responder. Confira sua conexão e consulte os dados antes de tentar novamente.');
+  throw error;
+ }finally{clearTimeout(timeout);}
+}
 const mutate=(resource,method,body)=>request(`/api/saude?resource=${resource}`,{method,body:JSON.stringify(body)});
 const saves=createBackgroundSaves(({settled})=>{
  state.pendingSaves=saves.pending;
@@ -28,8 +40,11 @@ function savePlan(payload,{template=false,remove=false,visibility=false}={}){
  if(String(payload.id||'').startsWith('pending-'))return;
  const id=payload.id||`pending-${crypto.randomUUID()}`;
  const prior=state[field].find(item=>item.id===id);
- const local={...prior,...structuredClone(payload),id,visible_to_student:payload.visible_to_student??prior?.visible_to_student??false};
- const project=(list)=>remove?list.filter(item=>item.id!==id):prior?list.map(item=>item.id===id?{...item,...local}:item):[...list,local];
+ const changes=structuredClone(payload);
+ const local={...changes,id,visible_to_student:changes.visible_to_student??false};
+ // Patch only fields changed by this operation: a later status toggle must not
+ // reintroduce a failed edit captured from an optimistic snapshot.
+ const project=(list)=>remove?list.filter(item=>item.id!==id):prior?list.map(item=>item.id===id?{...item,...changes}:item):[...list,local];
  const draft=structuredClone(payload);
  const target=template?'portfolio':'diets';
  state.module=target;state.dietDraft=null;state.templateDraft=null;state.foodItemContext=null;
@@ -77,7 +92,12 @@ async function logout(){await saves.idle();await request('/api/auth?resource=log
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{try{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}catch(e){passwordChange(e.message);}}});}
 function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{try{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}catch(e){auth(e.message);}}});}
 async function load(module,targetId=''){
- await saves.idle();
+ const userId=['diet-detail','editDiet'].includes(module)?state.selectedUserId:(targetId||state.selectedUserId);
+ if(['home','users'].includes(module))await saves.idle();
+ else if(['diets','diet-detail','editDiet'].includes(module))await saves.idle([`diets:${userId}`]);
+ else if(module==='monitor')await saves.idle([`goal:${userId}`]);
+ else if(module==='water')await saves.idle(['water']);
+ else if(['portfolio','template-detail','editTemplate','createDiet'].includes(module))await saves.idle(['templates:all']);
  const previousModule=state.module;state.module=module;state.notice='';state.moduleError='';
  state.foodItemContext=null;
  if(module!==previousModule){state.dietDraft=null;state.templateDraft=null;state.dietSourceSelected=false;}
@@ -96,17 +116,19 @@ async function load(module,targetId=''){
    }
   }else if(state.user.role==='professor'){
    const refreshProfiles=!state.profilesLoaded||['home','users'].includes(module);
+   const needTemplates=['home','portfolio','template-detail','editTemplate','createDiet'].includes(module);
+   const needFoods=['diet-detail','editDiet','createDiet','template-detail','editTemplate','createTemplate'].includes(module);
    const [profileData,templateData,foodData]=await Promise.all([
     refreshProfiles?request('/api/saude?resource=professor-users'):Promise.resolve({users:state.profiles}),
-    state.templatesLoaded?Promise.resolve({templates:state.templates}):request('/api/saude?resource=professor-portfolio'),
-    state.foodsLoaded?Promise.resolve({foods:state.foods}):request('/api/saude?resource=professor-alimentos'),
+    !needTemplates||state.templatesLoaded?Promise.resolve({templates:state.templates}):request('/api/saude?resource=professor-portfolio'),
+    !needFoods||state.foodsLoaded?Promise.resolve({foods:state.foods}):request('/api/saude?resource=professor-alimentos'),
    ]);
    state.profiles=profileData.users;
    state.templates=templateData.templates;
    state.foods=foodData.foods;
    state.profilesLoaded=true;
-   state.templatesLoaded=true;
-   state.foodsLoaded=true;
+   if(needTemplates)state.templatesLoaded=true;
+   if(needFoods)state.foodsLoaded=true;
    if(!state.profiles.some(profile=>profile.id===state.selectedUserId))state.selectedUserId=state.profiles[0]?.id||'';
    if(['template-detail','editTemplate'].includes(module))state.template=state.templates.find(template=>template.id===(targetId||state.template?.id))||null;
    if(module==='createTemplate')state.template=null;
@@ -141,16 +163,16 @@ async function navigate(module,targetId='',afterLoad){
  try{await load(module,targetId);afterLoad?.();}finally{state.loading=false;render();}
 }
 async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;if(['diets','monitor'].includes(module))state.profilesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
-function showInitialPasswordDialog(account,password){
+function showInitialPasswordDialog(account,password,autoCopy=false){
  const dialog=document.createElement('dialog');
  dialog.className='initial-password-dialog';
  dialog.setAttribute('aria-labelledby','initial-password-title');
- dialog.innerHTML='<span class="eyebrow">ACESSO CRIADO</span><h2 id="initial-password-title">Senha de primeiro acesso</h2><p data-initial-password-account></p><label for="initial-account-password">Senha inicial</label><input id="initial-account-password" type="text" readonly autocomplete="off"><p class="initial-password-dialog__hint">Use esta senha no primeiro acesso. Em seguida, o usuário deverá cadastrar uma senha pessoal com pelo menos 8 caracteres.</p><div class="initial-password-dialog__actions"><button type="button" class="saude-btn saude-btn--primary" data-copy-initial-password>Copiar senha</button><button type="button" class="saude-btn" data-close-initial-password>Fechar</button></div>';
- dialog.querySelector('[data-initial-password-account]').textContent='Senha padrão da conta de '+account.name+'.';
+ dialog.innerHTML='<span class="eyebrow">SENHA TEMPORÁRIA</span><h2 id="initial-password-title">Senha de primeiro acesso</h2><p data-initial-password-account></p><label for="initial-account-password">Senha inicial</label><input id="initial-account-password" type="text" readonly autocomplete="off"><p class="initial-password-dialog__hint">Use esta senha no primeiro acesso. Em seguida, o usuário deverá cadastrar uma senha pessoal com pelo menos 8 caracteres.</p><div class="initial-password-dialog__actions"><button type="button" class="saude-btn saude-btn--primary" data-copy-initial-password>Copiar senha</button><button type="button" class="saude-btn" data-close-initial-password>Fechar</button></div>';
+ dialog.querySelector('[data-initial-password-account]').textContent='Senha temporária da conta de '+account.name+'.';
  const input=dialog.querySelector('#initial-account-password');
  input.value=password;
  const copyButton=dialog.querySelector('[data-copy-initial-password]');
- copyButton.addEventListener('click',async()=>{
+ const copyPassword=async()=>{
   try{
    await navigator.clipboard.writeText(password);
    copyButton.textContent='Senha copiada';
@@ -158,12 +180,25 @@ function showInitialPasswordDialog(account,password){
    input.select();
    copyButton.textContent='Selecione e copie';
   }
- });
+ };
+ copyButton.addEventListener('click',copyPassword);
  dialog.querySelector('[data-close-initial-password]').addEventListener('click',()=>dialog.close());
  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
  document.body.append(dialog);
  dialog.showModal();
  copyButton.focus();
+ if(autoCopy)void copyPassword();
+}
+async function regenerateInitialPassword(id){
+ if(state.loading)return;
+ state.loading=true;render();
+ let result;
+ try{
+  result=await request('/api/auth?resource=account-temporary-password',{method:'POST',body:JSON.stringify({id})});
+  state.accounts=state.accounts.map(account=>account.id===id?result.account:account);
+ }catch(error){state.notice={text:error.message,type:'error'};}
+ finally{state.loading=false;render();}
+ if(result)showInitialPasswordDialog(result.account,result.initialPassword,true);
 }
 async function createAccount(payload){
  try{
@@ -182,6 +217,7 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onNavigate:navigate,
  onLogout:logout,
  onCreateAccount:payload=>createAccount(payload),
+ onRegeneratePassword:regenerateInitialPassword,
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),
  onEditAccount:payload=>action(async()=>{const result=await request('/api/auth?resource=accounts',{method:'PATCH',body:JSON.stringify(payload)});if(result.account.id===state.user.id)state.user=result.account;},'accounts','','Conta atualizada.'),
  onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','','Conta excluída.'),

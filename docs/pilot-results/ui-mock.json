@@ -1,0 +1,39 @@
+{
+  "environment": "local mock only",
+  "results": [
+    {
+      "check": "Professor home: mobile/desktop overflow",
+      "passed": true
+    },
+    {
+      "check": "Professor CRUD above meal cards",
+      "passed": true
+    },
+    {
+      "check": "Professor template: mobile/desktop overflow",
+      "passed": true
+    },
+    {
+      "check": "Student home: mobile/desktop overflow",
+      "passed": true
+    },
+    {
+      "check": "Student water: mobile/desktop overflow",
+      "passed": true
+    },
+    {
+      "check": "Water UI updates before delayed network",
+      "passed": true,
+      "optimisticMs": 3.300000011920929,
+      "artificialNetworkDelayMs": 750
+    },
+    {
+      "check": "Failed water write rolls UI back with error notice",
+      "passed": true
+    },
+    {
+      "check": "No uncaught browser errors",
+      "passed": true
+    }
+  ]
+}

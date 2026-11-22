@@ -570,7 +570,8 @@ export const supabaseSaudeStore = {
   },
 
   async deleteWaterGoal(id) {
-    await db().from('health_water_goals').delete().eq('user_id', id);
+    const { error } = await db().from('health_water_goals').delete().eq('user_id', id);
+    if (error) throw error;
     return this.getWater(id);
   },
 

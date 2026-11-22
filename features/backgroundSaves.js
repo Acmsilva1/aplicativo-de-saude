@@ -5,8 +5,9 @@ export function createBackgroundSaves(onChange = () => {}) {
   let count = 0;
   return {
     get pending() { return count; },
-    async idle() {
-      while (lanes.size) await Promise.all([...lanes.values()].map(lane => lane.done));
+    async idle(keys) {
+      const relevant = () => [...lanes.entries()].filter(([key]) => !keys || keys.includes(key)).map(([, lane]) => lane);
+      while (relevant().length) await Promise.all(relevant().map(lane => lane.done));
     },
     save({ key, read, write, project, persist, confirm = (_value, result) => result, success, failure }) {
       let lane = lanes.get(key);

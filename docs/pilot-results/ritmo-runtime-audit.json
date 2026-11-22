@@ -1,0 +1,68 @@
+{
+  "checks": [
+    {
+      "name": "security header content-security-policy",
+      "ok": true
+    },
+    {
+      "name": "security header strict-transport-security",
+      "ok": true
+    },
+    {
+      "name": "security header x-content-type-options",
+      "ok": true
+    },
+    {
+      "name": "security header x-frame-options",
+      "ok": true
+    },
+    {
+      "name": "unauthenticated session denied",
+      "ok": true
+    },
+    {
+      "name": "API no-store",
+      "ok": true
+    },
+    {
+      "name": "malformed cookie rejected without 500",
+      "ok": true
+    },
+    {
+      "name": "no secret/source exposure /.env",
+      "ok": true
+    },
+    {
+      "name": "no secret/source exposure /.git/config",
+      "ok": true
+    },
+    {
+      "name": "no secret/source exposure /server.js",
+      "ok": true
+    },
+    {
+      "name": "no secret/source exposure /lib/supabase.js",
+      "ok": true
+    },
+    {
+      "name": "no secret/source exposure /docker-compose.yml",
+      "ok": true
+    },
+    {
+      "name": "runtime secrets absent from public build",
+      "ok": true
+    },
+    {
+      "name": "synthetic login successful",
+      "ok": true
+    },
+    {
+      "name": "cookie HttpOnly Secure SameSite=Strict",
+      "ok": true
+    },
+    {
+      "name": "brute force blocked despite forged XFF",
+      "ok": true
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import {
   isMockAuthEnabled,
   listUsers,
   createAccount,
+  regenerateTemporaryPassword,
   setAccountAccess,
   updateAccount,
   deleteAccount,
@@ -58,6 +59,12 @@ export default async function handler(req, res) {
     }
     if (user.role !== 'admin') return res.status(403).json({ error: 'Somente o administrador gerencia contas.' });
     if (resource === 'observability' && req.method === 'GET') return res.json(appMetrics());
+    if (resource === 'account-temporary-password' && req.method === 'POST') {
+      const result = await regenerateTemporaryPassword(String(req.body?.id || ''));
+      return result.account
+        ? res.json({ account: result.account, initialPassword: result.initialPassword })
+        : res.status(400).json({ error: result.error || 'Conta indisponível para nova senha de primeiro acesso.' });
+    }
     if (resource === 'accounts' && req.method === 'GET') return res.json({ accounts: await listUsers() });
     if (resource === 'accounts' && req.method === 'POST') {
       const result = await createAccount(req.body || {});

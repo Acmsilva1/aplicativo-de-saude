@@ -1,0 +1,183 @@
+{
+  "createdAt": "2026-11-22T00:25:27.004Z",
+  "base": "http://127.0.0.1:5199",
+  "checks": [
+    {
+      "name": "unauthenticated API denied",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_user_profiles",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_user_profiles",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_user_roles",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_user_roles",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_diet_plans",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_diet_plans",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_diet_meals",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_diet_meals",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_diet_items",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_diet_items",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_water_goals",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_water_goals",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read colleague: health_water_entries",
+      "ok": true
+    },
+    {
+      "name": "RLS anonymous cannot read: health_water_entries",
+      "ok": true
+    },
+    {
+      "name": "RLS student cannot read OFF diets",
+      "ok": true
+    },
+    {
+      "name": "RLS positive: student reads own active diet",
+      "ok": true
+    },
+    {
+      "name": "RLS hidden diet children denied: health_diet_meals",
+      "ok": true
+    },
+    {
+      "name": "RLS hidden diet children denied: health_diet_items",
+      "ok": true
+    },
+    {
+      "name": "RLS positive: student reads own water goal",
+      "ok": true
+    },
+    {
+      "name": "RLS unlinked professor denied: health_diet_plans",
+      "ok": true
+    },
+    {
+      "name": "RLS admin cannot read health: health_diet_plans",
+      "ok": true
+    },
+    {
+      "name": "RLS unlinked professor denied: health_water_goals",
+      "ok": true
+    },
+    {
+      "name": "RLS admin cannot read health: health_water_goals",
+      "ok": true
+    },
+    {
+      "name": "RLS cannot write water for colleague",
+      "ok": true
+    },
+    {
+      "name": "RLS cannot self promote",
+      "ok": true
+    },
+    {
+      "name": "API ignores student forged target",
+      "ok": true
+    },
+    {
+      "name": "API unlinked professor denied",
+      "ok": true
+    },
+    {
+      "name": "API student cannot manage diet",
+      "ok": true
+    },
+    {
+      "name": "API admin health denied",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    },
+    {
+      "name": "load: exact water total, no lost writes",
+      "ok": true
+    }
+  ],
+  "load": {
+    "users": 11,
+    "requests": 660,
+    "durationMs": 88834,
+    "rps": 7.4,
+    "p50": 1128,
+    "p95": 1472,
+    "p99": 1674,
+    "max": 2031,
+    "errors": 0,
+    "byKind": {
+      "professor-read": 60,
+      "agua-checkin": 150,
+      "agua": 300,
+      "dietas": 150
+    }
+  }
+}

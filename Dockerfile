@@ -11,4 +11,5 @@ COPY features ./features
 COPY lib ./lib
 COPY scripts ./scripts
 EXPOSE 5199
+USER node
 CMD ["node", "server.js"]

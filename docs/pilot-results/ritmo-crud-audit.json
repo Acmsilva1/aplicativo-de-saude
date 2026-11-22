@@ -1,0 +1,36 @@
+{
+  "checks": [
+    {
+      "name": "admin creates accounts; first access enforced; password change works",
+      "ok": true
+    },
+    {
+      "name": "weekly diet create/edit/ON visible to student",
+      "ok": true
+    },
+    {
+      "name": "single official goal; student check-in visible to linked professor",
+      "ok": true
+    },
+    {
+      "name": "professor template create/edit/delete",
+      "ok": true
+    },
+    {
+      "name": "block existing session and reenable account",
+      "ok": true
+    },
+    {
+      "name": "professor linked to student cannot be deleted; profile preserved",
+      "ok": true
+    },
+    {
+      "name": "diet and goal deletion; logout",
+      "ok": true
+    }
+  ],
+  "cleanup": {
+    "created": 3,
+    "deleted": 3
+  }
+}

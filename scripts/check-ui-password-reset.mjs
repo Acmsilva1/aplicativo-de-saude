@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
+const origin = process.env.UI_TEST_ORIGIN || 'http://127.0.0.1:5299';
+if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) throw Error('This script only accepts a local mock server.');
+// Do not expose passwords in Playwright assertion/call logs.
+process.on('uncaughtException', () => { console.error('Password reset UI test failed; sensitive diagnostics suppressed.'); process.exitCode = 1; });
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
+const contexts = [];
+const results = [];
+try {
+  const admin = await browser.newContext({ baseURL: origin }); contexts.push(admin);
+  let login = await admin.request.post('/api/auth?resource=login', { data: { email: 'master@saude.local', password: '12345' } });
+  if (login.status() === 401) login = await admin.request.post('/api/auth?resource=login', { data: { email: 'master@saude.local', password: 'Local-Pilot-123!' } });
+  assert.equal(login.status(), 200);
+  if ((await login.json()).user.must_change_password) assert.equal((await admin.request.post('/api/auth?resource=change-password', { data: { password: 'Local-Pilot-123!' } })).status(), 200);
+  await admin.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { window.__copiedPassword = value; } } });
+  });
+  const page = await admin.newPage(); const errors = [];
+  page.on('pageerror', () => errors.push('pageerror'));
+  await page.goto('/');
+  await page.locator('[data-module="accounts"]').click();
+  assert.equal(await page.locator('[data-regenerate-password][data-id="demo-admin"]').count(), 0);
+  await page.locator('[data-module="createAccount"]').click();
+  const email = `ui.reset.${Date.now()}@saude.local`;
+  await page.locator('[data-account-form] [name="name"]').fill('AUDITORIA UI Senha temporária');
+  await page.locator('[data-account-form] [name="email"]').fill(email);
+  const created = page.waitForResponse(response => response.url().includes('/api/auth?resource=accounts') && response.request().method() === 'POST');
+  await page.locator('[data-account-form] button[type="submit"]').click();
+  const creation = await created; assert.equal(creation.status(), 201);
+  const { account } = await creation.json();
+  const input = page.locator('#initial-account-password');
+  await input.waitFor();
+  const original = await input.inputValue();
+  assert.ok(original.length === 24 && /^[A-Za-z0-9_-]+$/.test(original));
+  await page.locator('[data-close-initial-password]').click();
+  const reset = page.locator(`[data-regenerate-password][data-id="${account.id}"]`);
+  await reset.waitFor();
+  results.push({ check: 'UI create account issues unique 24-character temporary password and shows pending reset icon', passed: true });
+  async function resetInUi() {
+    await reset.click();
+    await page.getByRole('button', { name: 'Gerar e copiar', exact: true }).click();
+    await input.waitFor();
+    return input.inputValue();
+  }
+  const firstReset = await resetInUi();
+  assert.ok(firstReset.length === 24 && firstReset !== original);
+  await page.getByRole('button', { name: 'Senha copiada', exact: true }).waitFor();
+  assert.ok(await page.evaluate(password => window.__copiedPassword === password, firstReset));
+  results.push({ check: 'Reset icon confirms, rotates password and automatically copies new value', passed: true });
+  await page.locator('[data-close-initial-password]').click();
+  await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw Error('Clipboard unavailable for test'); }; });
+  const secondReset = await resetInUi();
+  assert.ok(secondReset.length === 24 && secondReset !== firstReset);
+  await page.getByRole('button', { name: 'Selecione e copie', exact: true }).waitFor();
+  assert.ok(await input.evaluate(element => element.selectionStart === 0 && element.selectionEnd === element.value.length));
+  results.push({ check: 'Clipboard denial selects the password for manual copy', passed: true });
+  await page.locator('[data-close-initial-password]').click();
+  const aluno = await browser.newContext({ baseURL: origin }); contexts.push(aluno);
+  const invalid = await aluno.request.post('/api/auth?resource=login', { data: { email, password: original } });
+  assert.equal(invalid.status(), 401);
+  const valid = await aluno.request.post('/api/auth?resource=login', { data: { email, password: secondReset } });
+  assert.equal(valid.status(), 200);
+  assert.equal((await valid.json()).user.must_change_password, true);
+  const changed = await aluno.request.post('/api/auth?resource=change-password', { data: { password: 'UI-personal-password-123!' } });
+  assert.equal(changed.status(), 200);
+  await page.reload();
+  await page.locator('[data-module="accounts"]').click();
+  await page.locator(`[data-edit-account][data-id="${account.id}"]`).waitFor();
+  assert.equal(await reset.count(), 0);
+  assert.equal((await admin.request.post('/api/auth?resource=account-temporary-password', { data: { id: account.id } })).status(), 400);
+  results.push({ check: 'Old password rejected; new first access works; icon disappears and API denies reset after personal password change', passed: true });
+  assert.equal(errors.length, 0);
+  results.push({ check: 'No uncaught browser errors', passed: true });
+  await admin.request.delete('/api/auth?resource=accounts', { data: { id: account.id } });
+  console.log(JSON.stringify({ environment: 'local mock only', results }, null, 2));
+} finally { await Promise.all(contexts.map(context => context.close())); await browser.close(); }

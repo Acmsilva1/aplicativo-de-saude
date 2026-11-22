@@ -1,10 +1,9 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-import { getSupabaseAdmin, getSupabaseAnon } from '../../../lib/supabase.js';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { getSupabaseAdmin, createUserClient } from '../../../lib/supabase.js';
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
-const INITIAL_PASSWORD = '123456';
 const temporaryPasswordDigest = (password) => createHash('sha256').update(password).digest('hex');
 const matchesDigest = (password, digest) => {
   if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/i.test(digest)) return false;
@@ -29,7 +28,7 @@ function publicAccount(row, professorName = '') {
   return out;
 }
 
-async function loadAccount(userId) {
+async function loadAccount(userId, { includeDisabled = false } = {}) {
   const db = getSupabaseAdmin();
   const { data: role, error: roleErr } = await db
     .from('health_user_roles')
@@ -37,7 +36,7 @@ async function loadAccount(userId) {
     .eq('user_id', userId)
     .maybeSingle();
   if (roleErr) throw roleErr;
-  if (!role || !role.access_enabled) return null;
+  if (!role || (!includeDisabled && !role.access_enabled)) return null;
 
   const { data: profile, error: profileErr } = await db
     .from('health_user_profiles')
@@ -89,7 +88,12 @@ function setSessionCookie(req, res, session) {
   res.cookie(SESSION_COOKIE, encodeSession(session), sessionCookieOptions(req, maxAge));
 }
 
-export function clearSession(req, res) {
+export async function clearSession(req, res) {
+  const session = decodeSession(readCookie(req, SESSION_COOKIE));
+  if (session?.access_token) {
+    const { error } = await getSupabaseAdmin().auth.admin.signOut(session.access_token, 'local');
+    if (error && error.status !== 401 && error.status !== 403) throw error;
+  }
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
     sameSite: 'strict',
@@ -102,7 +106,7 @@ async function refreshIfNeeded(req, res, session) {
   const expiresAtMs = session.expires_at ? session.expires_at * 1000 : 0;
   if (expiresAtMs && expiresAtMs > Date.now() + 60_000) return session;
   if (!session.refresh_token) return session;
-  const { data, error } = await getSupabaseAnon().auth.refreshSession({
+  const { data, error } = await createUserClient().auth.refreshSession({
     refresh_token: session.refresh_token,
   });
   if (error || !data?.session) return session;
@@ -128,11 +132,11 @@ export async function getUser(req, res) {
 export async function createSession(req, res) {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
-  const { data, error } = await getSupabaseAnon().auth.signInWithPassword({ email, password });
+  const { data, error } = await createUserClient().auth.signInWithPassword({ email, password });
   if (error || !data?.session?.user) return null;
   const account = await loadAccount(data.session.user.id);
   if (!account) {
-    await getSupabaseAnon().auth.signOut();
+    await getSupabaseAdmin().auth.admin.signOut(data.session.access_token, 'local');
     return null;
   }
   setSessionCookie(req, res, data.session);
@@ -167,7 +171,7 @@ export async function changePassword(req, res, password) {
     .eq('user_id', user.id);
   if (roleErr) return null;
 
-  const { data, error: signErr } = await getSupabaseAnon().auth.signInWithPassword({
+  const { data, error: signErr } = await createUserClient().auth.signInWithPassword({
     email: user.email,
     password: next,
   });
@@ -255,7 +259,7 @@ export async function createAccount({ name, email, role, professor_id }) {
   }
 
   const admin = getSupabaseAdmin();
-  const initialPassword = INITIAL_PASSWORD;
+  const initialPassword = randomBytes(18).toString('base64url');
   const { data: existing } = await admin
     .from('health_user_profiles')
     .select('user_id')
@@ -311,9 +315,31 @@ export async function createAccount({ name, email, role, professor_id }) {
   return { account, initialPassword };
 }
 
+export async function regenerateTemporaryPassword(id) {
+  if (!id) return { error: 'Selecione uma conta de primeiro acesso.' };
+  const account = await loadAccount(id);
+  if (!account || account.role === 'admin' || !account.must_change_password) {
+    return { error: 'Gere uma nova senha apenas para uma conta ativa que ainda não concluiu o primeiro acesso.' };
+  }
+  const admin = getSupabaseAdmin();
+  const { data, error: lookupError } = await admin.auth.admin.getUserById(id);
+  if (lookupError || !data?.user) return { error: 'Não foi possível preparar a nova senha temporária.' };
+  const initialPassword = randomBytes(18).toString('base64url');
+  const { error } = await admin.auth.admin.updateUserById(id, {
+    password: initialPassword,
+    app_metadata: {
+      ...(data.user.app_metadata || {}),
+      initial_password_digest: temporaryPasswordDigest(initialPassword),
+    },
+  });
+  if (error) return { error: 'Não foi possível gerar a nova senha temporária. Tente novamente.' };
+  // Only the digest is retained. The plaintext is returned to this admin action.
+  return { account, initialPassword };
+}
+
 export async function updateAccount(id, { name, email, role, professor_id }) {
   const admin = getSupabaseAdmin();
-  const current = await loadAccount(id);
+  const current = await loadAccount(id, { includeDisabled: true });
   if (!current) return { error: 'Conta não encontrada.' };
 
   const n = String(name || '').trim().slice(0, 80);
@@ -362,24 +388,35 @@ export async function updateAccount(id, { name, email, role, professor_id }) {
     user_metadata: { name: n, role: nextRole },
   });
 
-  return { account: await loadAccount(id) };
+  return { account: await loadAccount(id, { includeDisabled: true }) };
 }
 
 export async function setAccountAccess(id, access) {
-  const current = await loadAccount(id);
+  const current = await loadAccount(id, { includeDisabled: true });
   if (!current || current.role === 'admin') return null;
   const { error } = await getSupabaseAdmin()
     .from('health_user_roles')
     .update({ access_enabled: access })
     .eq('user_id', id);
   if (error) return null;
-  return loadAccount(id);
+  return loadAccount(id, { includeDisabled: true });
 }
 
 export async function deleteAccount(id) {
-  const current = await loadAccount(id);
+  const current = await loadAccount(id, { includeDisabled: true });
   if (!current || current.role === 'admin') return false;
   const admin = getSupabaseAdmin();
+  if (current.role === 'professor') {
+    const { data: students, error } = await admin
+      .from('health_user_roles')
+      .select('user_id')
+      .eq('role', 'student')
+      .eq('professor_id', id)
+      .limit(1);
+    // Reassign active and blocked students before deleting their professor.
+    // This check must precede every destructive operation below.
+    if (error || students?.length) return false;
+  }
   await admin.from('health_diet_templates').delete().eq('professor_id', id);
   await admin.from('health_water_entries').delete().eq('user_id', id);
   await admin.from('health_water_goals').delete().eq('user_id', id);

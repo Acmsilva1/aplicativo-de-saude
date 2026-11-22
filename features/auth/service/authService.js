@@ -42,6 +42,10 @@ export async function createAccount(payload) {
   return useMockData() ? mock.createDemoAccount(payload) : real.createAccount(payload);
 }
 
+export async function regenerateTemporaryPassword(id) {
+  return useMockData() ? mock.regenerateTemporaryPassword(id) : real.regenerateTemporaryPassword(id);
+}
+
 export async function updateAccount(id, payload) {
   return useMockData() ? mock.updateDemoAccount(id, payload) : real.updateAccount(id, payload);
 }

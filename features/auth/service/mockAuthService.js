@@ -4,7 +4,6 @@ import { useMockData } from '../../../lib/env.js';
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEY_LEN = 64;
 const DEFAULT_PASSWORD = '12345';
-const INITIAL_ACCOUNT_PASSWORD = '123456';
 
 function hashPassword(plain) {
   const salt = randomBytes(16);
@@ -103,7 +102,7 @@ export function createDemoAccount({ name, email, role, professor_id }) {
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
   }
-  const initialPassword = INITIAL_ACCOUNT_PASSWORD;
+  const initialPassword = randomBytes(18).toString('base64url');
   const account = {
     id: `demo-${randomUUID()}`,
     name: n,
@@ -116,6 +115,17 @@ export function createDemoAccount({ name, email, role, professor_id }) {
     professor_id: linkId,
   };
   accounts.push(account);
+  return { account: publicAccount(account), initialPassword };
+}
+
+export function regenerateTemporaryPassword(id) {
+  const account = accounts.find(item => item.id === id);
+  if (!account || account.role === 'admin' || !account.access || !account.must_change_password) {
+    return { error: 'Gere uma nova senha apenas para uma conta ativa que ainda não concluiu o primeiro acesso.' };
+  }
+  const initialPassword = randomBytes(18).toString('base64url');
+  account.password_hash = hashPassword(initialPassword);
+  for (const [key, value] of sessions) if (value === id) sessions.delete(key);
   return { account: publicAccount(account), initialPassword };
 }
 

@@ -1,0 +1,122 @@
+{
+  "environment": "production HTTPS; temporary audit users; read-only UI",
+  "results": [
+    {
+      "name": "professor: login to home",
+      "passed": true,
+      "ms": 1931
+    },
+    {
+      "name": "professor home: responsive 390/1366px",
+      "passed": true
+    },
+    {
+      "name": "professor hydration: responsive 390/1366px",
+      "passed": true
+    },
+    {
+      "name": "student: login to home",
+      "passed": true,
+      "ms": 2722
+    },
+    {
+      "name": "student home: responsive 390/1366px",
+      "passed": true
+    },
+    {
+      "name": "student diet: responsive 390/1366px",
+      "passed": true
+    },
+    {
+      "name": "student hydration: responsive 390/1366px",
+      "passed": true
+    },
+    {
+      "name": "Uncaught browser errors",
+      "passed": true,
+      "count": 0
+    }
+  ],
+  "apiTimings": [
+    {
+      "actor": "professor",
+      "resource": "session",
+      "ms": 39
+    },
+    {
+      "actor": "professor",
+      "resource": "login",
+      "ms": 741
+    },
+    {
+      "actor": "professor",
+      "resource": "professor-portfolio",
+      "ms": 656
+    },
+    {
+      "actor": "professor",
+      "resource": "professor-users",
+      "ms": 1089
+    },
+    {
+      "actor": "professor",
+      "resource": "professor-users",
+      "ms": 1017
+    },
+    {
+      "actor": "professor",
+      "resource": "professor-users",
+      "ms": 967
+    },
+    {
+      "actor": "professor",
+      "resource": "professor-agua",
+      "ms": 803
+    },
+    {
+      "actor": "student",
+      "resource": "session",
+      "ms": 126
+    },
+    {
+      "actor": "student",
+      "resource": "login",
+      "ms": 766
+    },
+    {
+      "actor": "student",
+      "resource": "agua",
+      "ms": 1121
+    },
+    {
+      "actor": "student",
+      "resource": "dietas",
+      "ms": 1555
+    },
+    {
+      "actor": "student",
+      "resource": "dietas",
+      "ms": 1398
+    },
+    {
+      "actor": "student",
+      "resource": "dietas",
+      "ms": 1533
+    },
+    {
+      "actor": "student",
+      "resource": "agua",
+      "ms": 1089
+    },
+    {
+      "actor": "student",
+      "resource": "dietas",
+      "ms": 1374
+    },
+    {
+      "actor": "student",
+      "resource": "agua",
+      "ms": 1058
+    }
+  ]
+}
