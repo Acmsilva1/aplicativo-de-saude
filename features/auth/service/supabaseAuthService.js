@@ -315,26 +315,35 @@ export async function createAccount({ name, email, role, professor_id }) {
   return { account, initialPassword };
 }
 
+const pendingPasswordResets = new Set();
 export async function regenerateTemporaryPassword(id) {
-  if (!id) return { error: 'Selecione uma conta de primeiro acesso.' };
-  const account = await loadAccount(id);
-  if (!account || account.role === 'admin' || !account.must_change_password) {
-    return { error: 'Gere uma nova senha apenas para uma conta ativa que ainda não concluiu o primeiro acesso.' };
-  }
-  const admin = getSupabaseAdmin();
-  const { data, error: lookupError } = await admin.auth.admin.getUserById(id);
-  if (lookupError || !data?.user) return { error: 'Não foi possível preparar a nova senha temporária.' };
-  const initialPassword = randomBytes(18).toString('base64url');
-  const { error } = await admin.auth.admin.updateUserById(id, {
-    password: initialPassword,
-    app_metadata: {
-      ...(data.user.app_metadata || {}),
-      initial_password_digest: temporaryPasswordDigest(initialPassword),
-    },
-  });
-  if (error) return { error: 'Não foi possível gerar a nova senha temporária. Tente novamente.' };
-  // Only the digest is retained. The plaintext is returned to this admin action.
-  return { account, initialPassword };
+  if (!id) return { error: 'Selecione uma conta.' };
+  if (pendingPasswordResets.has(id)) return { error: 'Já existe uma redefinição de senha em andamento para esta conta.' };
+  pendingPasswordResets.add(id);
+  try {
+    const account = await loadAccount(id);
+    if (!account || account.role === 'admin') return { error: 'Selecione uma conta ativa de professor ou aluno.' };
+    const admin = getSupabaseAdmin();
+    const { data, error: lookupError } = await admin.auth.admin.getUserById(id);
+    if (lookupError || !data?.user) return { error: 'Não foi possível preparar a senha provisória.' };
+    // Block health access before replacing a personal password. Fail closed if
+    // setting the mandatory-change flag fails; never issue an unrestricted temp.
+    if (!account.must_change_password) {
+      const { error } = await admin.from('health_user_roles').update({ must_change_password: true }).eq('user_id', id);
+      if (error) return { error: 'Não foi possível exigir a troca de senha. Nenhuma senha foi alterada.' };
+    }
+    const initialPassword = randomBytes(18).toString('base64url');
+    const { error } = await admin.auth.admin.updateUserById(id, {
+      password: initialPassword,
+      app_metadata: { ...(data.user.app_metadata || {}), initial_password_digest: temporaryPasswordDigest(initialPassword) },
+    });
+    if (error) {
+      // A network error can occur after Auth committed the replacement. Keep
+      // the account gated rather than risk an unrestricted temporary password.
+      return { error: 'Não foi possível confirmar a nova senha. A conta permanece com troca obrigatória; tente resetar novamente.' };
+    }
+    return { account: { ...account, must_change_password: true }, initialPassword };
+  } finally { pendingPasswordResets.delete(id); }
 }
 
 export async function updateAccount(id, { name, email, role, professor_id }) {

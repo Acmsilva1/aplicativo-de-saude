@@ -38,9 +38,9 @@ try {
   const reset = page.locator(`[data-regenerate-password][data-id="${account.id}"]`);
   await reset.waitFor();
   results.push({ check: 'UI create account issues unique 24-character temporary password and shows pending reset icon', passed: true });
-  async function resetInUi() {
+  async function resetInUi(confirmLabel = 'Gerar e copiar') {
     await reset.click();
-    await page.getByRole('button', { name: 'Gerar e copiar', exact: true }).click();
+    await page.getByRole('button', { name: confirmLabel, exact: true }).click();
     await input.waitFor();
     return input.inputValue();
   }
@@ -68,9 +68,33 @@ try {
   await page.reload();
   await page.locator('[data-module="accounts"]').click();
   await page.locator(`[data-edit-account][data-id="${account.id}"]`).waitFor();
-  assert.equal(await reset.count(), 0);
-  assert.equal((await admin.request.post('/api/auth?resource=account-temporary-password', { data: { id: account.id } })).status(), 400);
-  results.push({ check: 'Old password rejected; new first access works; icon disappears and API denies reset after personal password change', passed: true });
+  assert.equal(await reset.count(), 1);
+  assert.match(await reset.textContent(), /Resetar senha/);
+  assert.equal(await reset.locator('svg').count(), 0);
+  assert.equal((await aluno.request.post('/api/auth?resource=account-temporary-password', { data: { id: account.id } })).status(), 403);
+  results.push({ check: 'Personal password hides copy icon and exposes explicit admin Resetar senha; student reset denied', passed: true });
+  const recovered = await resetInUi('Resetar senha');
+  assert.ok(recovered.length === 24 && recovered !== original && recovered !== secondReset);
+  await page.locator('[data-close-initial-password]').click();
+  assert.equal((await aluno.request.get('/api/auth?resource=session')).status(), 401);
+  assert.equal((await aluno.request.post('/api/auth?resource=login', { data: { email, password: 'UI-personal-password-123!' } })).status(), 401);
+  const recoveredLogin = await aluno.request.post('/api/auth?resource=login', { data: { email, password: recovered } });
+  assert.equal(recoveredLogin.status(), 200);
+  assert.equal((await recoveredLogin.json()).user.must_change_password, true);
+  const studentPage = await aluno.newPage();
+  studentPage.on('pageerror', () => errors.push('pageerror'));
+  await studentPage.goto('/');
+  await studentPage.locator('#new-password').fill('UI-new-personal-password-456!');
+  await studentPage.locator('#confirm-password').fill('UI-new-personal-password-456!');
+  await studentPage.locator('.password-change-card button[type="submit"]').click();
+  await studentPage.locator('.saude-home-grid').waitFor();
+  await studentPage.locator('.login-welcome').waitFor({ state: 'detached' });
+  await page.reload();
+  await page.locator('[data-module="accounts"]').click();
+  await page.locator(`[data-edit-account][data-id="${account.id}"]`).waitFor();
+  assert.match(await reset.textContent(), /Resetar senha/);
+  assert.equal(await reset.locator('svg').count(), 0);
+  results.push({ check: 'Admin resets forgotten personal password to provisional; old session/password fail; user must choose a new personal password in UI', passed: true });
   assert.equal(errors.length, 0);
   results.push({ check: 'No uncaught browser errors', passed: true });
   await admin.request.delete('/api/auth?resource=accounts', { data: { id: account.id } });

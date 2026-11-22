@@ -15,7 +15,7 @@ async function call(actor,path,method='GET',body){
 }
 const auth=(actor,resource,method,body)=>call(actor,`/api/auth?resource=${resource}`,method,body);
 const health=(actor,resource,method,body)=>call(actor,`/api/saude?resource=${resource}`,method,body);
-async function login(actor,pass=password){const r=await auth(actor,'login','POST',{email:actor.email,password:pass});assert.equal(r.status,200);return r;}
+async function login(actor,pass=actor.password||password){const r=await auth(actor,'login','POST',{email:actor.email,password:pass});assert.equal(r.status,200);return r;}
 try{
  const email=`ritmo.crud.${Date.now()}@example.com`;
  const {user}=checked(await db.auth.admin.createUser({email,password,email_confirm:true}));
@@ -36,11 +36,18 @@ try{
   await login(actor,reset.data.initialPassword);
   assert.equal((await health(actor,role==='professor'?'professor-users':'agua')).status,403);
   assert.equal((await auth(actor,'change-password','POST',{password})).status,200);
-  assert.equal((await auth(admin,'account-temporary-password','POST',{id:actor.id})).status,400);
+  const recovered=await auth(admin,'account-temporary-password','POST',{id:actor.id});
+  assert.equal(recovered.status,200);assert.equal(recovered.data.account.must_change_password,true);
+  assert.ok([401,403].includes((await health(actor,role==='professor'?'professor-users':'agua')).status));
+  assert.equal((await auth(actor,'login','POST',{email:actor.email,password})).status,401);
+  await login(actor,recovered.data.initialPassword);
+  assert.equal((await health(actor,role==='professor'?'professor-users':'agua')).status,403);
+  actor.password=password+'-recovered';
+  assert.equal((await auth(actor,'change-password','POST',{password:actor.password})).status,200);
   return actor;
  }
  const professor=await account('professor');const student=await account('student',professor.id);
- done('unique 24-character temporary passwords; admin regeneration invalidates old password; first access enforced; personal password protected from regeneration');
+ done('unique 24-character temporary passwords; admin regeneration invalidates old password; first access enforced; admin can reset forgotten personal password; mandatory change restored');
  const payload={user_id:student.id,titulo:'AUDITORIA dieta semanal',semanal:true,semana:Array.from({length:7},(_,i)=>({titulo:`Dia ${i}`,refeicoes:[{tipo:'almoco',titulo:'Almoço',itens:[{nome:'Arroz',quantidade:'100 g'}]}]}))};
  const diet=await health(professor,'professor-dieta','POST',payload);assert.equal(diet.status,201);
  const id=diet.data.id;assert.ok(id);

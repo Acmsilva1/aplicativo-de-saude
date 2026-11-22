@@ -120,11 +120,12 @@ export function createDemoAccount({ name, email, role, professor_id }) {
 
 export function regenerateTemporaryPassword(id) {
   const account = accounts.find(item => item.id === id);
-  if (!account || account.role === 'admin' || !account.access || !account.must_change_password) {
-    return { error: 'Gere uma nova senha apenas para uma conta ativa que ainda não concluiu o primeiro acesso.' };
+  if (!account || account.role === 'admin' || !account.access) {
+    return { error: 'Selecione uma conta ativa de professor ou aluno.' };
   }
   const initialPassword = randomBytes(18).toString('base64url');
   account.password_hash = hashPassword(initialPassword);
+  account.must_change_password = true;
   for (const [key, value] of sessions) if (value === id) sessions.delete(key);
   return { account: publicAccount(account), initialPassword };
 }

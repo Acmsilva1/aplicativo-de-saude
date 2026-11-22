@@ -19,7 +19,7 @@ Após esta auditoria, foi configurado backup adicional criptografado na VM, diá
 | Admin gerencia acesso sem consultar saúde | PASS API e RLS para planos/metas de terceiros |
 | Aluno não se promove a admin / grava água para colega | PASS |
 | Primeiro acesso e bloqueio de contas | PASS; troca obrigatória antes de consultar saúde; sessão de conta bloqueada recusada; reativação funciona |
-| Senha temporária e recuperação | Senha única de 24 caracteres; ícone admin gera/copia nova senha apenas em conta ativa com primeiro acesso pendente; após troca pessoal, UI e API protegem contra regeneração |
+| Senha temporária e recuperação | Senha única de 24 caracteres; ícone de cópia enquanto primeiro acesso pendente; após troca pessoal, botão explícito Resetar senha no CRUD admin volta a conta ao estado de troca obrigatória |
 | HTTPS / cookies | HTTPS público respondeu 200; HttpOnly, Secure, SameSite=Strict; CSP, HSTS, nosniff e proteção contra iframe verificados |
 | API não armazenada no cache | Cache-Control: no-store |
 | Segredos | .env root:root 600; nenhum segredo testado encontrado no build ou nas rotas públicas sondadas |
@@ -71,9 +71,11 @@ VM compartilhada observada: aproximadamente 2 GiB de RAM total, 1,3 GiB disponí
 10. **Falso sucesso ao excluir meta:** erro de DELETE agora é propagado; a interface não confirma operação rejeitada pelo banco.
 11. **Segredos e execução:** credenciais de bootstrap/SQL retiradas do runtime e container endurecido; APIs recebem no-store; cookie malformado passa a ser recusado sem 500.
 12. **Senha inicial previsível:** substituída por senha criptograficamente aleatória e única de 24 caracteres em contas novas, com troca obrigatória. A senha temporária aparece no diálogo do administrador, não em logs ou relatórios. Contas existentes não têm senhas alteradas automaticamente.
-13. **Recuperação do primeiro acesso:** ícone de cópia no cadastro gera uma NOVA senha temporária após confirmação, invalidando o login com a anterior. Não se armazena senha legível para consulta. Clipboard negado oferece seleção manual. Após troca pessoal, o ícone desaparece e o servidor rejeita regeneração; não é uma redefinição geral de senha pessoal. JWT já emitido segue a ressalva de expiração descrita no item 6.
+13. **Recuperação administrativa de senha:** ícone de cópia no cadastro gera uma NOVA senha temporária após confirmação, invalidando o login com a anterior. Depois da troca pessoal, o ícone é substituído pelo botão explícito Resetar senha. Somente administrador pode redefinir uma conta ativa de professor/aluno para senha provisória; o servidor exige nova troca antes de consultar saúde. Falha ao marcar a troca obrigatória impede alterar a senha; erro ou timeout na substituição mantém a troca obrigatória para evitar senha provisória sem restrição. Não há recuperação pública no login nem senha legível guardada para consulta. Clipboard negado oferece seleção manual. JWT já emitido segue a ressalva de expiração descrita no item 6.
 
 A inspeção sanitizada final encontrou zero contas com primeiro acesso pendente e zero contas com digest da senha inicial fixa antiga. Nenhuma senha dos participantes existentes foi alterada.
+
+Recuperação após esquecimento: **Admin → Contas → usuário → Resetar senha → confirmar → copiar a senha provisória** e entregar ao titular por canal privado. No próximo login, o usuário escolhe outra senha pessoal de 8 a 80 caracteres. A ação é restrita ao administrador e não reativa conta pausada. O perfil de administrador permanece protegido contra reset por essa ação; recuperação do próprio administrador continua com o responsável pelo projeto Supabase. Não há link público “Esqueci minha senha”.
 
 Migration aplicada no PostgreSQL real: `supabase/migrations/20261121000000_pilot_rls_hardening.sql`, em transação. As nove tabelas health observadas estavam com RLS habilitada. A API usa service_role no servidor; essa credencial contorna RLS, por isso foram necessários testes tanto da API quanto do REST com tokens de usuário, e não apenas inspeção do SQL. Referência: [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
 
@@ -88,7 +90,7 @@ Relatórios sanitizados em `docs/pilot-results/`:
 - `ui-production.json`: UI HTTPS real e tempos registrados.
 - `ritmo-crud-audit.json`: CRUD autenticado real com contas sintéticas e limpeza.
 - `ritmo-crud-audit-final.json`: nova rodada com senhas únicas e recuperação, sem valores das senhas.
-- `ui-temporary-password.json`: criação, ícone, confirmação, cópia/fallback e proteção após troca pessoal na UI mock.
+- `ui-temporary-password.json`: evidência histórica da regra inicial de primeiro acesso; substituída para recuperação pessoal pelo teste `ui-admin-password-reset.json`.
 - `ritmo-access-audit.json`: contagens de primeiro acesso e ausência de credenciais de manutenção no runtime.
 
 Testes locais: `node scripts/check-security.mjs` e `node scripts/check-background-saves.mjs`. Build: `npm run build`. `npm audit --omit=dev` consulta a base de vulnerabilidades atual; resultado muda ao longo do tempo.
