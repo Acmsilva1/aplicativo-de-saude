@@ -1,7 +1,6 @@
 import '../styles/saude.css';
 import './pwa.js';
 import { createBackgroundSaves } from './backgroundSaves.js';
-import { showToast } from './saude/service/uiConfirmation.js';
 import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
 import { renderPasswordChange, showWelcome } from './auth/firstAccess.js';
@@ -13,9 +12,11 @@ const saves=createBackgroundSaves(({settled})=>{
  state.pendingSaves=saves.pending;
  // A completion must not replace a form the user has started typing in.
  if(settled&&app.dataset.module===state.module&&app.querySelector('form')){
-  const status=app.querySelector('.background-save-status');
-  if(status)status.hidden=!saves.pending;
-  if(state.notice){showToast(state.notice.text,{type:state.notice.type});state.notice='';}
+  const forms=[...app.querySelectorAll('form')];
+  const focused=document.activeElement;
+  render();
+  app.querySelectorAll('form').forEach((form,index)=>{if(forms[index])form.replaceWith(forms[index]);});
+  if(focused&&forms.some(form=>form.contains(focused)))focused.focus({preventScroll:true});
  }else render();
 });
 window.addEventListener('beforeunload',event=>{if(saves.pending){event.preventDefault();event.returnValue='';}});
