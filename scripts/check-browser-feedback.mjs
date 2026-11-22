@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+import { X509Certificate } from 'node:crypto';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
+const localOrigin = process.env.UI_TEST_ORIGIN || 'http://127.0.0.1:5399';
+if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(localOrigin)) throw Error('Local feedback checks require localhost.');
+// Fresh temporary Chrome profile; no credentials or existing user profile.
+const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const results = [];
+try {
+  const context = await browser.newContext();
+  const page = await context.newPage(); page.setDefaultTimeout(10000);
+  const cdp = await context.newCDPSession(page);
+  let tlsDetails;
+  await cdp.send('Network.enable');
+  cdp.on('Network.responseReceived', event => { if(event.response.url === 'https://controle-de-saude.duckdns.org/') tlsDetails = event.response.securityDetails; });
+  const response = await page.goto('https://controle-de-saude.duckdns.org/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  assert.equal(response.status(), 200);
+  await page.locator('#login-form').waitFor();
+  assert.equal(new URL(page.url()).origin, 'https://controle-de-saude.duckdns.org');
+  const security = await response.securityDetails();
+  assert.ok(security);
+  const { tableNames } = await cdp.send('Network.getCertificate', { origin: 'https://controle-de-saude.duckdns.org' });
+  const certificate = tableNames.length ? new X509Certificate(Buffer.from(tableNames[0], 'base64')) : null;
+  const hostnameVerified = certificate ? Boolean(certificate.checkHost('controle-de-saude.duckdns.org')) : tlsDetails?.sanList?.includes('controle-de-saude.duckdns.org');
+  assert.ok(hostnameVerified);
+  const manifest = await (await context.request.get('https://controle-de-saude.duckdns.org/manifest.webmanifest')).json();
+  assert.equal(manifest.display, 'standalone'); assert.equal(manifest.scope, '/'); assert.equal(manifest.start_url, '/');
+  results.push({ check: 'Public login loads in fresh Google Chrome without ignoring TLS errors or supplying credentials', passed: true, status: response.status(), security: { protocol: security.protocol, issuer: security.issuer, subjectName: security.subjectName, subjectAltName: certificate?.subjectAltName || tlsDetails.sanList.join(', '), validFrom: certificate?.validFrom || new Date(security.validFrom * 1000).toISOString(), validTo: certificate?.validTo || new Date(security.validTo * 1000).toISOString(), hostnameVerified: true }, manifest: { display: manifest.display, display_override: manifest.display_override, scope: manifest.scope, start_url: manifest.start_url } });
+  await page.goto(localOrigin);
+  await page.locator('#login-form').waitFor();
+  await page.evaluate(async () => { const ui = await import('/features/saude/service/uiConfirmation.js'); ui.showToast('Teste local de aviso'); });
+  await page.getByRole('button', { name: 'Fechar aviso' }).click();
+  assert.equal(await page.locator('[data-app-toast]').count(), 0);
+  results.push({ check: 'App toast can be dismissed manually', passed: true });
+  await page.evaluate(async () => {
+    const ui = await import('/features/saude/service/uiConfirmation.js');
+    ui.showToast('Teste local de expiração');
+    const now = Date.now;
+    Date.now = () => now() + 5000;
+    window.dispatchEvent(new Event('focus'));
+    Date.now = now;
+  });
+  assert.equal(await page.locator('[data-app-toast]').count(), 0);
+  results.push({ check: 'Focus removes expired toast after simulated background pause', passed: true, advancedClockMs: 5000 });
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); window.dispatchEvent(new Event('focus')); });
+  assert.equal(await page.locator('#connection-status').isVisible(), true);
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true }); window.dispatchEvent(new Event('focus')); });
+  assert.equal(await page.locator('#connection-status').isVisible(), false);
+  results.push({ check: 'Focus reconciles offline banner to online without reopening window', passed: true });
+  console.log(JSON.stringify({ environment: 'Fresh Google Chrome headless; public HTTPS login only plus local mock feedback; no user profile or credentials', limitations: ['Browser save-password manager UI, Safe Browsing classification and installed PWA window chrome were not reproduced or inspected. DOM dialog events do not validate those browser-owned interfaces.'], results }, null, 2));
+  await context.close();
+} finally { await browser.close(); }

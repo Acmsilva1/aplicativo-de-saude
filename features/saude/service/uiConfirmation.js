@@ -1,20 +1,33 @@
 let toastTimer = 0;
+let toastExpiresAt = 0;
+
+export function clearToasts() {
+  window.clearTimeout(toastTimer);
+  toastExpiresAt = 0;
+  document.querySelectorAll('[data-app-toast]').forEach(node => node.remove());
+}
+function removeExpiredToast() {
+  if (toastExpiresAt && Date.now() >= toastExpiresAt) clearToasts();
+}
+window.addEventListener('focus', removeExpiredToast);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) removeExpiredToast(); });
 
 export function showToast(message, { type = 'success' } = {}) {
   const text = String(message || '').trim();
   if (!text) return;
-  document.querySelectorAll('[data-app-toast]').forEach((node) => node.remove());
-  window.clearTimeout(toastTimer);
+  clearToasts();
 
   const toast = document.createElement('div');
   toast.className = `app-toast app-toast--${type === 'error' ? 'error' : 'success'}`;
   toast.dataset.appToast = 'true';
   toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
-  toast.innerHTML = `<span class="app-toast__icon" aria-hidden="true">${type === 'error' ? '!' : '✓'}</span><span class="app-toast__text"></span>`;
+  toast.innerHTML = `<span class="app-toast__icon" aria-hidden="true">${type === 'error' ? '!' : '✓'}</span><span class="app-toast__text"></span><button type="button" class="app-toast__dismiss" aria-label="Fechar aviso">×</button>`;
+  toast.querySelector('.app-toast__dismiss').addEventListener('click', clearToasts);
   toast.querySelector('.app-toast__text').textContent = text;
   document.body.append(toast);
   requestAnimationFrame(() => toast.classList.add('is-visible'));
 
+  toastExpiresAt = Date.now() + 2000;
   toastTimer = window.setTimeout(() => {
     toast.classList.remove('is-visible');
     toast.classList.add('is-leaving');

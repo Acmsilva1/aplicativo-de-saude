@@ -1,4 +1,4 @@
-import { showToast } from '../saude/service/uiConfirmation.js';
+import { formFeedback, authErrorMessage } from './formFeedback.js';
 
 export function renderPasswordChange(container,{user,error='',onSubmit,onLogout}){
  const shell=document.createElement('main');shell.className='password-change-shell';
@@ -6,11 +6,22 @@ export function renderPasswordChange(container,{user,error='',onSubmit,onLogout}
  const heading=document.createElement('h1');heading.textContent=`Olá, ${user.name}!`;
  const description=document.createElement('p');description.textContent='Para proteger seu acesso, escolha sua senha pessoal antes de continuar.';
  card.append(heading,description);
- if(error) showToast(error,{type:'error'});
  const form=document.createElement('form');
  form.innerHTML='<label for="new-password">Nova senha</label><input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="80" required><small>Use de 8 a 80 caracteres.</small><label for="confirm-password">Confirme a nova senha</label><input id="confirm-password" name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="80" required><button type="submit" class="button button--primary">Salvar senha e continuar</button>';
- form.addEventListener('submit',async e=>{e.preventDefault();const values=new FormData(form);const confirm=form.elements.namedItem('confirmation');confirm.setCustomValidity(values.get('password')===values.get('confirmation')?'':'As senhas precisam ser iguais.');if(!form.reportValidity())return;const button=form.querySelector('button');button.disabled=true;try{await onSubmit(String(values.get('password')));}finally{button.disabled=false;}});
- form.elements.namedItem('confirmation').addEventListener('input',()=>form.elements.namedItem('confirmation').setCustomValidity(''));
+ const feedback=formFeedback(form);
+ if(error)feedback.show(error);
+ form.addEventListener('submit',async event=>{
+  event.preventDefault();feedback.clear();
+  const password=form.elements.namedItem('password');
+  const confirmation=form.elements.namedItem('confirmation');
+  if(password.value.length<8||password.value.length>80){feedback.show('Escolha uma senha de 8 a 80 caracteres.',password);return;}
+  if(password.value!==confirmation.value){feedback.show('As senhas precisam ser iguais.',confirmation);return;}
+  const button=form.querySelector('button[type="submit"]');
+  button.disabled=true;button.textContent='Salvando senha…';form.setAttribute('aria-busy','true');
+  try{await onSubmit(password.value);}
+  catch(cause){feedback.show(authErrorMessage(cause));}
+  finally{button.disabled=false;button.textContent='Salvar senha e continuar';form.removeAttribute('aria-busy');}
+ });
  const logout=document.createElement('button');logout.type='button';logout.className='button';logout.textContent='Sair';logout.addEventListener('click',onLogout);
  card.append(form,logout);shell.append(card);container.replaceChildren(shell);
 }

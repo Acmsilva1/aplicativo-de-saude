@@ -1,0 +1,56 @@
+{
+  "checkedAt": "2026-11-22T23:45:35.405Z",
+  "base": "https://controle-de-saude.duckdns.org",
+  "checks": [
+    {
+      "file": "assets/index-DwnzIHD7.css",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "assets/index-MJ-_syj0.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "backgrounds/saude-mobile.jpg",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "backgrounds/saude.jpg",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "icons/health-180.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "icons/health-192.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "icons/health-512.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "index.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "manifest.webmanifest",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "sw.js",
+      "status": 200,
+      "match": true
+    }
+  ]
+}

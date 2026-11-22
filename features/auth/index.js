@@ -1,4 +1,4 @@
-import { showToast } from '../saude/service/uiConfirmation.js';
+import { formFeedback, authErrorMessage } from './formFeedback.js';
 import appInfo from '../../package.json';
 
 export function renderLogin(container, { onLogin, error = '' } = {}) {
@@ -36,14 +36,23 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
       </section>
     </main>`;
 
-  if (error) showToast(error, { type: 'error' });
-
-  container.querySelector('#login-form').addEventListener('submit', async (event) => {
+  const loginForm = container.querySelector('#login-form');
+  const feedback = formFeedback(loginForm);
+  if (error) feedback.show(error);
+  loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const button = event.currentTarget.querySelector('button');
+    feedback.clear();
+    const email = loginForm.elements.namedItem('email');
+    const password = loginForm.elements.namedItem('password');
+    if (!email.value.trim() || email.validity.typeMismatch) { feedback.show('Informe um e-mail válido.', email); return; }
+    if (!password.value) { feedback.show('Informe sua senha.', password); return; }
+    const button = loginForm.querySelector('.login-submit');
     button.disabled = true;
     button.querySelector('span').textContent = 'Entrando…';
-    const form = new FormData(event.currentTarget);
-    await onLogin?.({ email: form.get('email'), password: form.get('password') });
+    loginForm.setAttribute('aria-busy', 'true');
+    try {
+      await onLogin?.({ email: email.value, password: password.value });
+    } catch (cause) { feedback.show(authErrorMessage(cause)); }
+    finally { button.disabled = false; button.querySelector('span').textContent = 'Entrar'; loginForm.removeAttribute('aria-busy'); }
   });
 }

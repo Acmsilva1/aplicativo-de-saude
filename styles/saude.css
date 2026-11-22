@@ -4720,3 +4720,10 @@ body {
   .saude-diet-plan-meta { font-size: .7rem; }
 }
 .background-save-status { position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom)); z-index: 90; padding: .6rem .9rem; border: 1px solid #dbe3ec; border-radius: 999px; background: #fff; color: #475569; box-shadow: 0 4px 18px #0002; font-size: .8rem; pointer-events: none; }
+.auth-feedback { display: flex; align-items: flex-start; gap: .6rem; border: 1px solid #fecdca; border-radius: 10px; padding: .7rem .85rem; margin-bottom: .35rem; background: #fef3f2; color: #b42318; font-size: .85rem; line-height: 1.45; }
+.auth-feedback[hidden] { display: none; }
+.auth-feedback > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.auth-feedback > button, .app-toast__dismiss { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font: inherit; font-size: 1.25rem; cursor: pointer; }
+.auth-feedback > button:focus-visible, .app-toast__dismiss:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.login-form input[aria-invalid="true"], .password-change-card input[aria-invalid="true"] { border-color: #d92d20; }
+.app-toast { pointer-events: auto; }

@@ -1,0 +1,25 @@
+{
+  "environment": "local mock Chromium headless; browser chrome/password-manager UI not inspected",
+  "results": [
+    {
+      "check": "Login failure inline, dismissible, preserves fields and retries without reload",
+      "passed": true
+    },
+    {
+      "check": "Mismatch corrected by editing first field only; no stale native validity; next submit reaches server",
+      "passed": true
+    },
+    {
+      "check": "Server 500 preserves passwords and permits retry after dismissing inline error, without closing window",
+      "passed": true
+    },
+    {
+      "check": "No URL change, no native JavaScript dialog, no uncaught errors",
+      "passed": true,
+      "unchangedUrl": true,
+      "nativeDialogEvents": 0,
+      "mainFrameNavigations": 1,
+      "uncaughtErrors": 0
+    }
+  ]
+}

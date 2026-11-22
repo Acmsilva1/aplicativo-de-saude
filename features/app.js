@@ -89,8 +89,8 @@ async function enter(){
  }finally{state.loading=false;dismiss();}
 }
 async function logout(){await saves.idle();await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''});auth();}
-function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{try{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}catch(e){passwordChange(e.message);}}});}
-function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{try{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}catch(e){auth(e.message);}}});}
+function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
+function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}});}
 async function load(module,targetId=''){
  const userId=['diet-detail','editDiet'].includes(module)?state.selectedUserId:(targetId||state.selectedUserId);
  if(['home','users'].includes(module))await saves.idle();

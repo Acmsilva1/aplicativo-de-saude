@@ -8,6 +8,9 @@ function showConnectionStatus(){
 }
 window.addEventListener('online',showConnectionStatus);
 window.addEventListener('offline',showConnectionStatus);
+window.addEventListener('pageshow',showConnectionStatus);
+window.addEventListener('focus',showConnectionStatus);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)showConnectionStatus();});
 showConnectionStatus();
 
 function isStandalone() {
