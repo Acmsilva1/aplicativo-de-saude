@@ -203,9 +203,7 @@ function renderPortfolio(templates = []) {
 
 function renderTemplateDetail(template) {
   if (!template) return '<section class="module-page"><h1>Modelo</h1><p class="saude-empty-row">Selecione um modelo para abrir os detalhes.</p></section>';
-  const detail = renderDietDetail(template, { showWeek: true });
-  return detail.replace('<button class="back-link" type="button" data-action="back-to-diets">‹ Voltar para dietas</button>', '<button class="back-link" type="button" data-module="portfolio">‹ Voltar para portfólio</button>')
-    .replace('</section>', `<div class="saude-detail-actions"><button type="button" class="saude-btn" data-action="use-template" data-id="${esc(template.id)}">Usar em aluno</button><button type="button" class="saude-btn saude-btn--danger" data-action="delete-template" data-id="${esc(template.id)}">Excluir modelo</button><button type="button" class="saude-btn saude-btn--primary" data-action="edit-template" data-id="${esc(template.id)}">Editar modelo</button></div></section>`);
+  return renderDietDetail(template, { showWeek: true, templateMode: true });
 }
 
 function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = false) {
@@ -235,7 +233,7 @@ function renderDietMeals(meals = [], foods = []) {
       <ul class="saude-diet-items">${(meal.itens || []).map((item) => `<li>${renderDietFoodDetails(item, foods)}</li>`).join('') || '<li class="saude-empty-item">🍽️ Sem alimentos nesta refeição.</li>'}</ul></li>`).join('');
 }
 
-function renderDietDetail(diet, { editable = false, profile = null, showWeek = false, foods = [] } = {}) {
+function renderDietDetail(diet, { editable = false, profile = null, showWeek = false, foods = [], templateMode = false } = {}) {
   if (!diet) return '<section class="module-page"><h1>Dieta</h1><p class="saude-empty-row">Selecione uma dieta para abrir os detalhes.</p></section>';
   const weekly = Boolean(diet.semanal);
   const days = weekly && showWeek ? DIET_WEEK.map((day, index) => ({ day, meals: diet.semana?.[index]?.refeicoes || [] })) : null;
@@ -248,11 +246,13 @@ function renderDietDetail(diet, { editable = false, profile = null, showWeek = f
     : `<ul class="fin-list saude-diet-list">${renderDietMeals(daily?.refeicoes || [], foods) || '<li class="saude-empty-row">Este plano ainda não tem refeições.</li>'}</ul>${renderDietNutritionTotal(daily || diet, foods)}`;
   const eyebrow = weekly ? (days ? '🗓️ PLANO SEMANAL · SEGUNDA A DOMINGO' : '🗓️ PLANO SEMANAL · HOJE') : '📌 PLANO FIXO';
   return `<section class="module-page">
-    <button class="back-link" type="button" data-action="back-to-diets">‹ Voltar para dietas</button>
+    ${templateMode ? '<button class="back-link" type="button" data-module="portfolio">‹ Voltar para portfólio</button>' : '<button class="back-link" type="button" data-action="back-to-diets">‹ Voltar para dietas</button>'}
     <header class="module-heading"><div><span class="eyebrow">${eyebrow}</span><h1>🍽️ ${esc(diet.titulo || diet.title || 'Dieta')}</h1><p>${esc(diet.objetivo || '')}${profile ? ` · ${esc(profileName(profile))}` : ''}</p></div></header>
+    ${templateMode ? `<div class="saude-detail-actions"><button type="button" class="saude-btn" data-action="use-template" data-id="${esc(diet.id)}">Usar em aluno</button><button type="button" class="saude-btn saude-btn--danger" data-action="delete-template" data-id="${esc(diet.id)}">Excluir modelo</button><button type="button" class="saude-btn saude-btn--primary" data-action="edit-template" data-id="${esc(diet.id)}">Editar modelo</button></div>` : ''}
+    ${editable ? `<div class="saude-detail-actions"><button type="button" class="saude-btn saude-btn--danger" data-action="delete-diet" data-id="${esc(diet.id)}">Excluir dieta</button><button type="button" class="saude-btn saude-btn--primary" data-action="edit-diet" data-id="${esc(diet.id)}">Editar dieta</button></div>` : ''}
     ${body}
     ${diet.observacoes ? `<p class="saude-observations"><strong>📝 Observações</strong><br>${esc(diet.observacoes)}</p>` : ''}
-    ${editable ? `<div class="saude-detail-actions"><button type="button" class="saude-btn saude-btn--danger" data-action="delete-diet" data-id="${esc(diet.id)}">Excluir dieta</button><button type="button" class="saude-btn saude-btn--primary" data-action="edit-diet" data-id="${esc(diet.id)}">Editar dieta</button></div>` : ''}
+
   </section>`;
 }
 
