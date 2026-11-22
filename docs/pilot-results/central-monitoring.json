@@ -1,0 +1,64 @@
+{
+  "checkedAt": "2026-11-22T00:42:54.908093+00:00",
+  "snapshotAt": "2026-11-22T00:42:46.248537+00:00",
+  "container": {
+    "id": "21fba7eeb474",
+    "name": "ritmo-saude",
+    "image": "ritmo-saude:latest",
+    "state": "running",
+    "health": "healthy",
+    "cpuPercent": 0,
+    "memoryUsed": 25973227,
+    "memoryLimit": 402653184,
+    "pids": 11,
+    "restarts": 0,
+    "networkRx": 7880,
+    "networkTx": 5460,
+    "blockRead": 336000,
+    "blockWrite": 0,
+    "startedAt": "2026-11-22T00:37:25.554796812Z",
+    "oomKilled": false,
+    "project": "ritmo-saude"
+  },
+  "collector": {
+    "timerActive": "active",
+    "intervalSeconds": 15,
+    "discovery": "all Docker containers; no static application allowlist"
+  },
+  "api": {
+    "route": "/api/overview",
+    "healthStatus": 200,
+    "unauthenticatedOverviewStatus": 401,
+    "unauthenticatedMonitorStatus": 401,
+    "authenticatedOverviewNotTested": "No Central credentials read or sessions created; route/UI consumption verified from source"
+  },
+  "alertConfig": {
+    "enabled": false,
+    "reportHour": 20,
+    "timeZone": "America/Sao_Paulo"
+  },
+  "monitorState": {
+    "modifiedAt": "2026-11-04T11:56:53.511489+00:00",
+    "hasRitmo": false
+  },
+  "rules": {
+    "cpuRamDiskCriticalPercent": 90,
+    "criticalHoldSeconds": 120,
+    "recoverBelowPercent": 85,
+    "staleCollectorSeconds": 60,
+    "containers": [
+      "state not running",
+      "health unhealthy",
+      "OOM killed",
+      "restart count increase",
+      "previously observed container missing"
+    ]
+  },
+  "externalHttpsProbe": false,
+  "mutations": "none; no Central rebuild required",
+  "notes": [
+    "Ritmo Saude metrics/health are automatically collected and displayed by the existing all-container UI.",
+    "Alert scheduler is disabled by the existing private configuration; no notification was sent or enabled.",
+    "The same-VM collector does not detect total VM/network outages independently."
+  ]
+}

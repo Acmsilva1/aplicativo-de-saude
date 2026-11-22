@@ -1,0 +1,12 @@
+{
+  "tested_at": "2026-11-22T00:50:03.029578+00:00",
+  "status": "ok",
+  "archive": "ritmo-saude-20261122T004828Z.tar.gz.aesgcm",
+  "isolated_network": true,
+  "restored": {
+    "health_tables": 9,
+    "all_health_rls": true,
+    "auth_users": 3
+  },
+  "production_database_modified": false
+}

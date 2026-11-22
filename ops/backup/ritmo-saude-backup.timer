@@ -1,0 +1,12 @@
+[Unit]
+Description=Ritmo Saude backup daily at midnight Brasilia
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 America/Sao_Paulo
+Persistent=true
+AccuracySec=1s
+RandomizedDelaySec=0
+Unit=ritmo-saude-backup.service
+
+[Install]
+WantedBy=timers.target

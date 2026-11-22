@@ -1,0 +1,9 @@
+{
+  "last_success": "2026-11-22T00:48:28.420629+00:00",
+  "status": "ok",
+  "archive": "ritmo-saude-20261122T004828Z.tar.gz.aesgcm",
+  "bytes": 40881,
+  "sha256": "a3cc4b247a5b84c7af33bd363a917f4d3ebef294e679396d34bdd87a77a3bf6c",
+  "retention_days": 30,
+  "timezone": "America/Sao_Paulo"
+}

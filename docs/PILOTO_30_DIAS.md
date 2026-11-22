@@ -6,7 +6,7 @@ Data: 21/11/2026, horário de Brasília. Público pretendido: 1 professor e 10 a
 
 Os testes realizados sustentam um **piloto controlado de 11 participantes** após as correções publicadas. Não constituem certificação de segurança nem um ensaio de disponibilidade por 30 dias.
 
-Antes de começar com dados reais, confirmar um backup recuperável do Supabase e um responsável pelo acompanhamento de erros. Backup/restauração e retenção do plano Supabase não foram comprovados nesta auditoria; esta é uma condição de liberação operacional, não um teste aprovado por inferência.
+Após esta auditoria, foi configurado backup adicional criptografado na VM, diário às 00:00 de Brasília e com retenção de 30 dias. A restauração dos schemas public/auth foi testada em banco isolado. O usuário confirmou a cópia oficial do Supabase; a restauração dessa cópia gerenciada não foi executada aqui. Ver [rotina de backup e monitoramento](BACKUP_E_MONITORAMENTO.md). Definir responsável pelo acompanhamento de erros durante o piloto.
 
 ## Checklist
 
@@ -28,7 +28,7 @@ Antes de começar com dados reais, confirmar um backup recuperável do Supabase 
 | Dependências de produção | npm audit --omit=dev: zero vulnerabilidades conhecidas na consulta realizada |
 | Carga autenticada 11 usuários | PASS: 660 requisições, zero erros, totais de água exatos |
 | UI desktop/mobile | PASS Chromium em 390 e 1366 px; cinco telas reais sem overflow e zero erros JS não tratados |
-| Backup e restauração | PENDENTE: comprovar recuperação antes de dados reais |
+| Backup e restauração | PASS da cópia adicional local: public/auth restaurados em PostgreSQL isolado; timer diário 00:00 Brasília e retenção 30 dias |
 | Deploy automático | PENDENTE: runner/script da pipeline anteriormente ausentes; publicações deste trabalho feitas por SSH e Compose |
 | Disponibilidade por 30 dias | NÃO ENSAIADA; exige acompanhamento durante o piloto |
 
@@ -101,10 +101,10 @@ Inspeção SQL: `pilot-db-audit.mjs` requer cliente pg instalado temporariamente
 
 ## Limites e acompanhamento por 30 dias
 
-- Não foram executados teste de endurance por 30 dias, simulação de todos os históricos possíveis, teste de recuperação de backup, pentest independente completo ou certificação LGPD.
+- Não foram executados teste de endurance por 30 dias, simulação de todos os históricos possíveis, restauração no Supabase de produção, pentest independente completo ou certificação LGPD.
 - A carga foi controlada e curta, com um único professor ativo e dez alunos; não demonstra capacidade para escala maior ou ataques de negação de serviço.
 - A VM tem SSH público e firewall UFW/fail2ban inativos no retrato observado. As portas de aplicativos estavam ligadas a loopback; não alterei firewall/SSH globais da VM compartilhada. Restringir administração por chave/IP exige planejamento conjunto para não perder acesso aos outros projetos.
 - Monitorar erros da API, atrasos de gravação, memória e espaço durante o piloto. As métricas atuais são em memória e reiniciam com o container; não equivalem a histórico permanente de 30 dias.
 - Salvamento em segundo plano não é uma fila offline persistente: fechar/encerrar o aplicativo pode interromper operações. A interface alerta ao tentar fechar com gravações pendentes. Em timeout, consultar os dados antes de repetir para evitar duplicação.
 - Fazer o onboarding de contas novas com entrega privada da senha temporária e troca no primeiro acesso. Senhas de contas já distribuídas não são recuperadas em texto; não guardar cópias em planilhas ou relatórios.
-- Antes da distribuição: confirmar backup restaurável e responsável pela revisão diária de erros. Durante o piloto: registrar versão, horário, perfil e ação ao relatar falhas, evitando compartilhar dados de outros participantes.
+- Backup adicional local restaurado em ensaio isolado, conforme runbook. Antes da distribuição: definir responsável pela revisão diária de erros. Durante o piloto: registrar versão, horário, perfil e ação ao relatar falhas, evitando compartilhar dados de outros participantes.
