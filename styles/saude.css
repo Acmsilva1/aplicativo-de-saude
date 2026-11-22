@@ -4719,3 +4719,4 @@ body {
   .saude-diet-plan-main small { font-size: .8rem; }
   .saude-diet-plan-meta { font-size: .7rem; }
 }
+.background-save-status { position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom)); z-index: 90; padding: .6rem .9rem; border: 1px solid #dbe3ec; border-radius: 999px; background: #fff; color: #475569; box-shadow: 0 4px 18px #0002; font-size: .8rem; pointer-events: none; }

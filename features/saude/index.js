@@ -565,8 +565,12 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   const moduleNav = homeActive ? '' : `<nav class="module-nav module-nav--home-only" aria-label="Navegação"><button type="button" class="home-return-button" data-module="${homeModule}" aria-label="Início" title="Início"><span aria-hidden="true">🏠</span></button></nav>`;
   container.innerHTML = `<main class="app-shell"><header class="app-header"><div class="header-brand"><span class="header-heart">♥</span> RITMO <strong>SAÚDE</strong></div><div class="header-account"><span>${esc(state.user?.name || view.label)}</span><small>${view.label}</small><button type="button" data-action="logout">Sair</button></div></header>
     ${moduleNav}
-    <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.loading ? '<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>Abrindo sua área</strong><small>Carregando os dados…</small></span></span></div>' : ''}${renderNotice()}${content}</div></main>`;
+    <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.pendingSaves ? '<div class="background-save-status" role="status" aria-live="polite">Salvando alterações…</div>' : ''}${state.loading ? '<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>Abrindo sua área</strong><small>Carregando os dados…</small></span></span></div>' : ''}${renderNotice()}${content}</div></main>`;
 
+  container.querySelectorAll('button[data-id^="pending-"]').forEach(button => {
+    button.disabled = true;
+    button.title = 'Salvando…';
+  });
   if (state.notice) {
     const pendingNotice = state.notice;
     state.notice = '';
