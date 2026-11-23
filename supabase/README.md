@@ -9,6 +9,7 @@ Projeto dedicado — **não** reutilizar o Supabase do Super App.
 | `migrations/20261120000000_initial_health_modules.sql` | Roles/profiles com `professor_id`, dietas, água, helpers RLS |
 | `migrations/20261120000001_diet_templates.sql` | Portfólio de modelos do professor |
 | `migrations/20261120000002_alimentos_catalog.sql` | Catálogo de alimentos + FK opcional |
+| `migrations/20261123140000_trial_started_at.sql` | Coluna `trial_started_at` (trial 30 dias) |
 | `seed/health_alimentos.sql` | Seed dos 121 alimentos (idempotente) |
 
 ## Padrão RLS (igual Super App)

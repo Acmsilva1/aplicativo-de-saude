@@ -78,6 +78,39 @@ export function renderPasswordChange(container, { user, error = '', onSubmit, on
   container.replaceChildren(shell);
 }
 
+/** Bloqueio quando o trial de 30 dias termina. */
+export function renderTrialExpired(container, { user, onLogout }) {
+  const shell = document.createElement('main');
+  shell.className = 'password-change-shell';
+  const card = document.createElement('section');
+  card.className = 'password-change-card';
+  const heading = document.createElement('h1');
+  heading.textContent = 'Período de teste encerrado';
+  const description = document.createElement('p');
+  description.textContent = `Olá, ${user?.name || 'usuário'}. Seu uso de teste de 30 dias terminou. Entre em contato com o administrador para conhecer os valores de uso e reativar o acesso.`;
+  const logout = document.createElement('button');
+  logout.type = 'button';
+  logout.className = 'button button--primary';
+  logout.dataset.action = 'logout';
+  logout.textContent = 'Sair';
+  logout.addEventListener('click', async () => {
+    if (logout.disabled) return;
+    logout.disabled = true;
+    logout.classList.add('is-busy');
+    logout.innerHTML = '<span class="button-busy-spinner" aria-hidden="true"></span><span>Saindo…</span>';
+    try {
+      await onLogout?.();
+    } catch {
+      logout.disabled = false;
+      logout.classList.remove('is-busy');
+      logout.textContent = 'Sair';
+    }
+  });
+  card.append(heading, description, logout);
+  shell.append(card);
+  container.replaceChildren(shell);
+}
+
 /** Define senha a partir do link de convite/recuperação do e-mail. */
 export function renderInvitePassword(container, { error = '', onSubmit, onCancel }) {
   const shell = document.createElement('main');

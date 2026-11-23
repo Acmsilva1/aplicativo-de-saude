@@ -22,6 +22,13 @@ import { saudeStore } from '../features/saude/data/saudeStore.js';
 import { checkLoginRateLimit, recordLoginFailure, clearLoginAttempts } from '../lib/loginRateLimit.js';
 import { hasSupabaseConfig } from '../lib/env.js';
 import { STRONG_PASSWORD_ERROR } from '../lib/passwordPolicy.js';
+import { isTrialBlocked, TRIAL_EXPIRED_CODE, TRIAL_EXPIRED_MESSAGE } from '../lib/trial.js';
+
+function rejectIfTrialExpired(res, user) {
+  if (!isTrialBlocked(user)) return false;
+  res.status(403).json({ error: TRIAL_EXPIRED_MESSAGE, code: TRIAL_EXPIRED_CODE });
+  return true;
+}
 
 export default async function handler(req, res) {
   try {
@@ -84,6 +91,7 @@ export default async function handler(req, res) {
 
     const user = await getUser(req, res);
     if (!user) return res.status(401).json({ error: 'Sessão encerrada. Entre novamente.' });
+    // session: sempre retorna o usuário (incl. trial expirado) para a UI bloquear.
     if (resource === 'session' && req.method === 'GET') return res.json({ user });
     if (resource === 'change-password' && req.method === 'POST') {
       const updated = await changePassword(req, res, req.body?.password);
@@ -96,6 +104,7 @@ export default async function handler(req, res) {
       if (user.must_change_password) {
         return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
       }
+      if (rejectIfTrialExpired(res, user)) return;
       const result = await getWebAuthnRegisterOptions(req, user);
       return result.options
         ? res.json(result)
@@ -105,12 +114,14 @@ export default async function handler(req, res) {
       if (user.must_change_password) {
         return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
       }
+      if (rejectIfTrialExpired(res, user)) return;
       const result = await verifyWebAuthnRegistration(req, user, req.body || {});
       return result.ok
         ? res.json(result)
         : res.status(400).json({ error: result.error || 'Não foi possível ativar a biometria.' });
     }
     if (resource === 'webauthn-revoke' && req.method === 'POST') {
+      if (rejectIfTrialExpired(res, user)) return;
       const result = await revokeWebAuthnCredential(user, req.body || {});
       return result.ok
         ? res.json(result)
@@ -120,6 +131,7 @@ export default async function handler(req, res) {
     if (user.must_change_password) {
       return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
     }
+    if (rejectIfTrialExpired(res, user)) return;
     if (user.role !== 'admin') return res.status(403).json({ error: 'Somente o administrador gerencia contas.' });
     if (resource === 'observability' && req.method === 'GET') return res.json(appMetrics());
     if ((resource === 'account-temporary-password' || resource === 'account-password-link') && req.method === 'POST') {

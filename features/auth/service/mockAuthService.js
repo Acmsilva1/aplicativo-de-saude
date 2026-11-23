@@ -2,6 +2,7 @@ import { randomUUID, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import { useMockData } from '../../../lib/env.js';
 import { normalizeBrazilPhone } from '../../../lib/phone.js';
 import { isStrongPassword, STRONG_PASSWORD_ERROR } from '../../../lib/passwordPolicy.js';
+import { buildTrialFields } from '../../../lib/trial.js';
 
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEY_LEN = 64;
@@ -28,12 +29,12 @@ const professorId = 'demo-professor';
 const inviteTokens = new Map();
 
 const accounts = [
-  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: true, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '' },
-  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: true, name: 'Professor', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001' },
-  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: true, name: 'André', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002' },
+  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: true, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '', trial_started_at: null },
+  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: true, name: 'Professor', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001', trial_started_at: null },
+  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: true, name: 'André', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002', trial_started_at: null },
 ];
 for (const [id, name, email] of [['demo-student-ana', 'Ana', 'ana@saude.local'], ['demo-student-bruno', 'Bruno', 'bruno@saude.local'], ['demo-student-carla', 'Carla', 'carla@saude.local'], ['demo-student-diego', 'Diego', 'diego@saude.local']]) {
-  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: true, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '' });
+  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: true, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '', trial_started_at: null });
 }
 
 const sessions = new Map();
@@ -61,11 +62,21 @@ function sessionCookieOptions(req) {
 }
 
 function publicAccount({ password_hash, invite_pending, ...account }) {
-  const out = { ...account };
+  const out = {
+    ...account,
+    ...buildTrialFields({ role: account.role, trial_started_at: account.trial_started_at }),
+  };
   if (account.role === 'student' && account.professor_id) {
     out.professor_name = professorName(account.professor_id);
   }
   return out;
+}
+
+function ensureDemoTrialStarted(account) {
+  if (!account || account.role === 'admin' || account.trial_started_at) return account;
+  if (account.must_change_password) return account;
+  account.trial_started_at = new Date().toISOString();
+  return account;
 }
 
 function cookie(req) {
@@ -131,6 +142,7 @@ export function createDemoAccount({ name, email, role, professor_id, phone, tele
     role_label: role === 'professor' ? 'Professor' : 'Aluno',
     access: true,
     professor_id: linkId,
+    trial_started_at: null,
   };
   accounts.push(account);
   const setupToken = issueSetupToken(account.id);
@@ -167,6 +179,7 @@ export function completeDemoInvite(req, res, { setup_token, access_token, passwo
   account.password_hash = hashPassword(next);
   account.must_change_password = false;
   account.invite_pending = false;
+  ensureDemoTrialStarted(account);
   inviteTokens.delete(token);
   for (const [key, value] of sessions) if (value === account.id) sessions.delete(key);
   const sessionToken = randomUUID();
@@ -191,6 +204,7 @@ function findLoginAccount(email, password) {
 export function createDemoSession(req, res) {
   const account = findLoginAccount(req.body?.email, req.body?.password || '');
   if (!account) return null;
+  ensureDemoTrialStarted(account);
   const token = randomUUID();
   sessions.set(token, account.id);
   res.cookie('ritmo_saude_demo', token, sessionCookieOptions(req));
@@ -200,6 +214,7 @@ export function createDemoSession(req, res) {
 export function createDemoSessionForUserId(req, res, userId) {
   const account = accounts.find((x) => x.id === userId && x.access);
   if (!account) return null;
+  ensureDemoTrialStarted(account);
   const token = randomUUID();
   sessions.set(token, account.id);
   res.cookie('ritmo_saude_demo', token, sessionCookieOptions(req));
@@ -235,7 +250,9 @@ export function updateWebAuthnCounter(credentialId, counter) {
 export function getDemoUser(req) {
   const id = sessions.get(cookie(req));
   const account = accounts.find((x) => x.id === id && x.access);
-  return account ? publicAccount(account) : null;
+  if (!account) return null;
+  ensureDemoTrialStarted(account);
+  return publicAccount(account);
 }
 
 export function clearDemoSession(req, res) {
@@ -303,6 +320,7 @@ export function changeDemoPassword(req, res, password) {
   account.password_hash = hashPassword(next);
   account.must_change_password = false;
   account.invite_pending = false;
+  ensureDemoTrialStarted(account);
   for (const [key, value] of sessions) if (value === account.id) sessions.delete(key);
   const token = randomUUID();
   sessions.set(token, account.id);

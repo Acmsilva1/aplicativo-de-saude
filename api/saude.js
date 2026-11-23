@@ -2,6 +2,7 @@ import { getUser, isMockAuthEnabled } from '../features/auth/service/authService
 import { saudeStore as store } from '../features/saude/data/saudeStore.js';
 import { validWaterAmount, validWaterGoal } from '../features/saude/service/waterIntakeService.js';
 import { hasSupabaseConfig } from '../lib/env.js';
+import { isTrialBlocked, TRIAL_EXPIRED_CODE, TRIAL_EXPIRED_MESSAGE } from '../lib/trial.js';
 
 export default async function handler(req, res) {
   try {
@@ -13,6 +14,9 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ error: 'Entre para acessar.' });
     if (user.must_change_password) {
       return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
+    }
+    if (isTrialBlocked(user)) {
+      return res.status(403).json({ error: TRIAL_EXPIRED_MESSAGE, code: TRIAL_EXPIRED_CODE });
     }
     if (user.role === 'admin') {
       return res.status(403).json({ error: 'A administração não consulta registros de saúde.' });

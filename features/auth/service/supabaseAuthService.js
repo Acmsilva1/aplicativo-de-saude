@@ -3,6 +3,7 @@ import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
 import { normalizeBrazilPhone } from '../../../lib/phone.js';
 import { isStrongPassword } from '../../../lib/passwordPolicy.js';
 import { sendAuthLinkEmail } from '../../../lib/mailer.js';
+import { buildTrialFields } from '../../../lib/trial.js';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
@@ -42,11 +43,36 @@ function publicAccount(row, professorName = '') {
     access: row.access_enabled !== false,
     must_change_password: row.must_change_password === true,
     professor_id: row.professor_id || null,
+    ...buildTrialFields({ role: row.role, trial_started_at: row.trial_started_at }),
   };
   if (out.role === 'student' && out.professor_id && professorName) {
     out.professor_name = professorName;
   }
   return out;
+}
+
+/** Grava trial_started_at = now() se ainda null (não admin). Idempotente. */
+async function ensureTrialStarted(userId, role) {
+  if (!userId || role === 'admin') return null;
+  const admin = getSupabaseAdmin();
+  const { data: profile, error: readErr } = await admin
+    .from('health_user_profiles')
+    .select('trial_started_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (readErr) throw readErr;
+  if (profile?.trial_started_at) return profile.trial_started_at;
+
+  const now = new Date().toISOString();
+  const { data: updated, error: writeErr } = await admin
+    .from('health_user_profiles')
+    .update({ trial_started_at: now })
+    .eq('user_id', userId)
+    .is('trial_started_at', null)
+    .select('trial_started_at')
+    .maybeSingle();
+  if (writeErr) throw writeErr;
+  return updated?.trial_started_at || now;
 }
 
 async function loadAccount(userId, { includeDisabled = false } = {}) {
@@ -61,7 +87,7 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
 
   const { data: profile, error: profileErr } = await db
     .from('health_user_profiles')
-    .select('user_id, nome, email, telefone')
+    .select('user_id, nome, email, telefone, trial_started_at')
     .eq('user_id', userId)
     .maybeSingle();
   if (profileErr) throw profileErr;
@@ -81,6 +107,7 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
     nome: profile?.nome || '',
     email: profile?.email || '',
     telefone: profile?.telefone || '',
+    trial_started_at: profile?.trial_started_at || null,
   }, professorName);
 }
 
@@ -148,7 +175,12 @@ export async function getUser(req, res) {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin.auth.getUser(session.access_token);
   if (error || !data?.user) return null;
-  return loadAccount(data.user.id);
+  let account = await loadAccount(data.user.id);
+  if (account && !account.must_change_password && !account.trial_exempt && !account.trial_started_at) {
+    await ensureTrialStarted(account.id, account.role);
+    account = await loadAccount(account.id);
+  }
+  return account;
 }
 
 export async function createSession(req, res) {
@@ -156,10 +188,14 @@ export async function createSession(req, res) {
   const password = String(req.body?.password || '');
   const { data, error } = await createUserClient().auth.signInWithPassword({ email, password });
   if (error || !data?.session?.user) return null;
-  const account = await loadAccount(data.session.user.id);
+  let account = await loadAccount(data.session.user.id);
   if (!account) {
     await getSupabaseAdmin().auth.admin.signOut(data.session.access_token, 'local');
     return null;
+  }
+  if (!account.must_change_password && !account.trial_exempt && !account.trial_started_at) {
+    await ensureTrialStarted(account.id, account.role);
+    account = await loadAccount(account.id);
   }
   setSessionCookie(req, res, data.session);
   return account;
@@ -167,7 +203,7 @@ export async function createSession(req, res) {
 
 /** Create an app session cookie for an already-verified user (e.g. WebAuthn). */
 export async function createSessionForUserId(req, res, userId) {
-  const account = await loadAccount(userId);
+  let account = await loadAccount(userId);
   if (!account) return null;
   const admin = getSupabaseAdmin();
   const { data: authUser, error: userErr } = await admin.auth.admin.getUserById(userId);
@@ -182,6 +218,10 @@ export async function createSessionForUserId(req, res, userId) {
     token_hash: link.properties.hashed_token,
   });
   if (error || !data?.session) return null;
+  if (!account.must_change_password && !account.trial_exempt && !account.trial_started_at) {
+    await ensureTrialStarted(account.id, account.role);
+    account = await loadAccount(account.id);
+  }
   setSessionCookie(req, res, data.session);
   return account;
 }
@@ -211,6 +251,7 @@ export async function changePassword(req, res, password) {
   });
   if (signErr || !data?.session) return null;
   setSessionCookie(req, res, data.session);
+  await ensureTrialStarted(user.id, user.role);
   return loadAccount(user.id);
 }
 
@@ -259,8 +300,10 @@ export async function completeInvite(req, res, { access_token, refresh_token, pa
   }
   setSessionCookie(req, res, session);
 
-  const account = await loadAccount(userData.user.id);
+  let account = await loadAccount(userData.user.id);
   if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
+  await ensureTrialStarted(account.id, account.role);
+  account = await loadAccount(account.id);
   return { account };
 }
 
@@ -303,7 +346,7 @@ export async function listUsers() {
   const [{ data: profiles, error: profileErr }, professorNames] = await Promise.all([
     db
       .from('health_user_profiles')
-      .select('user_id, nome, email, telefone')
+      .select('user_id, nome, email, telefone, trial_started_at')
       .in('user_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']),
     listProfessorNames(professorIds),
   ]);
@@ -316,6 +359,7 @@ export async function listUsers() {
       nome: profile.nome || '',
       email: profile.email || '',
       telefone: profile.telefone || '',
+      trial_started_at: profile.trial_started_at || null,
     }, professorNames.get(role.professor_id) || '');
   });
 }

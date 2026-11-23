@@ -612,9 +612,16 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   const loadingDetail = esc(state.loadingDetail || 'Carregando os dados…');
   const logoutLabel = state.loading && /sair/i.test(state.loadingTitle || '') ? 'Saindo…' : 'Sair';
   const moduleNav = homeActive ? '' : `<nav class="module-nav module-nav--home-only" aria-label="Navegação"><button type="button" class="home-return-button" data-module="${homeModule}" aria-label="Início" title="Início"${state.loading ? ' disabled' : ''}><span aria-hidden="true">🏠</span></button></nav>`;
+  const trialDays = state.user?.trial_days_remaining;
+  const trialFooter = state.user?.trial_exempt
+    ? '<span>Acesso administrativo</span>'
+    : (typeof trialDays === 'number'
+      ? `<span>Uso de teste: ${trialDays} dia${trialDays === 1 ? '' : 's'} restante${trialDays === 1 ? '' : 's'}</span>`
+      : '<span>Uso de teste: 30 dias</span>');
   container.innerHTML = `<main class="app-shell"${state.loading ? ' aria-busy="true"' : ''}><header class="app-header"><div class="header-brand"><span class="header-heart">♥</span> RITMO <strong>SAÚDE</strong></div><div class="header-account"><span>${esc(state.user?.name || view.label)}</span><small>${view.label}</small><button type="button" data-action="logout"${state.loading ? ' disabled class="is-busy"' : ''}>${state.loading && /sair/i.test(state.loadingTitle || '') ? '<span class="button-busy-spinner" aria-hidden="true"></span><span>Saindo…</span>' : logoutLabel}</button></div></header>
     ${moduleNav}
-    <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.pendingSaves ? '<div class="background-save-status" role="status" aria-live="polite">Salvando alterações…</div>' : ''}${state.loading ? `<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>${loadingTitle}</strong><small>${loadingDetail}</small></span></span></div>` : ''}${renderNotice()}${content}</div></main>`;
+    <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.pendingSaves ? '<div class="background-save-status" role="status" aria-live="polite">Salvando alterações…</div>' : ''}${state.loading ? `<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>${loadingTitle}</strong><small>${loadingDetail}</small></span></span></div>` : ''}${renderNotice()}${content}</div>
+    <footer class="app-footer">${trialFooter}<span>Ritmo Saúde</span></footer></main>`;
 
   container.querySelectorAll('button[data-id^="pending-"]').forEach(button => {
     button.disabled = true;

@@ -3,7 +3,7 @@ import './pwa.js';
 import { createBackgroundSaves } from './backgroundSaves.js';
 import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
-import { renderPasswordChange, renderInvitePassword, renderBiometricUnlock, showWelcome, showBusyStatus } from './auth/firstAccess.js';
+import { renderPasswordChange, renderInvitePassword, renderBiometricUnlock, renderTrialExpired, showWelcome, showBusyStatus } from './auth/firstAccess.js';
 import {
   assertBiometric,
   clearBiometricPreference,
@@ -61,7 +61,11 @@ async function request(url,options={}){
  try{
   const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options,signal:controller.signal});
   const data=await r.json();
-  if(!r.ok)throw Error(data.error||'Ação indisponível.');
+  if(!r.ok){
+   const err=Error(data.error||'Ação indisponível.');
+   if(data.code)err.code=data.code;
+   throw err;
+  }
   return data;
  }catch(error){
   if(controller.signal.aborted)throw Error('O servidor demorou para responder. Confira sua conexão e consulte os dados antes de tentar novamente.');
@@ -145,6 +149,10 @@ async function maybeEnrollBiometric(){
 async function enter(){
  const dismiss=showWelcome(state.user);
  try{
+  if(state.user.trial_expired){
+   render();
+   return;
+  }
   if(!state.user.must_change_password){
    beginLoading('Abrindo sua área','Carregando os dados…');
    render();
@@ -157,7 +165,7 @@ async function enter(){
 }
 async function logout(){
  if(state.loading)return;
- const inApp=Boolean(state.user&&!state.user.must_change_password);
+ const inApp=Boolean(state.user&&!state.user.must_change_password&&!state.user.trial_expired);
  let dismiss=()=>{};
  if(inApp){
   beginLoading('Saindo','Encerrando sua sessão…');
@@ -177,10 +185,12 @@ async function logout(){
   dismiss();
   state.notice={text:error.message||'Não foi possível sair. Tente novamente.',type:'error'};
   if(state.user?.must_change_password)passwordChange(error.message);
+  else if(state.user?.trial_expired)renderTrialExpired(app,{user:state.user,onLogout:logout});
   else render();
  }
 }
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
+function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
 function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:isBiometricPreferred(),onLogin:async({email,password,enableBiometric})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
   const pref=readBiometricPreference();
@@ -236,6 +246,11 @@ async function bootAuth(){
   }
   try{
    state.user=(await request('/api/auth?resource=session')).user;
+   if(state.user.trial_expired){
+    dismiss();
+    render();
+    return;
+   }
    if(!state.user.must_change_password){
     beginLoading('Abrindo sua área','Carregando os dados…');
     dismiss();
@@ -319,7 +334,13 @@ async function load(module,targetId=''){
   if(['diet-detail','editDiet'].includes(module))state.diet=state.diets.find(x=>x.id===(targetId||state.diet?.id))||null;
   else if(module==='createDiet'||module==='createTemplate')state.diet=null;
   else state.diet=state.diets[0]||null;
- }catch(e){state.notice={text:e.message,type:'error'};state.moduleError=e.message;state.diets=[];state.diet=null;state.water=null;state.monitor=null;}
+ }catch(e){
+  if(e.code==='trial_expired'){
+   state.user={...state.user,trial_expired:true,trial_days_remaining:0};
+   return;
+  }
+  state.notice={text:e.message,type:'error'};state.moduleError=e.message;state.diets=[];state.diet=null;state.water=null;state.monitor=null;
+ }
 }
 async function navigate(module,targetId='',afterLoad){
  if(state.loading)return;
@@ -383,7 +404,7 @@ async function createAccount(payload){
   state.notice={text:error.message,type:'error'};
  }finally{endLoading();render();}
 }
-function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();app.dataset.module=state.module;renderSaudeContent(app,{state,
+function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();if(state.user.trial_expired)return trialExpired();app.dataset.module=state.module;renderSaudeContent(app,{state,
  onNavigate:navigate,
  onLogout:logout,
  onCreateAccount:payload=>createAccount(payload),
