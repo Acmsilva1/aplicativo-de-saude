@@ -2755,6 +2755,9 @@ body {
   justify-content: center;
   gap: .3rem;
 }
+.saude-row-action[hidden] {
+  display: none !important;
+}
 .saude-row-action:hover {
   color: #b90000;
   border-color: #d00000;

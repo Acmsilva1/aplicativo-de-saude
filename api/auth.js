@@ -80,13 +80,20 @@ export default async function handler(req, res) {
     }
     if (resource === 'accounts' && req.method === 'DELETE') {
       const id = String(req.body?.id || '');
+      if (id && id === String(user.id || '')) {
+        return res.status(400).json({ error: 'Você não pode excluir a própria conta.' });
+      }
       if (!(await deleteAccount(id))) return res.status(400).json({ error: 'Conta indisponível ou protegida.' });
       await saudeStore.deleteUserData(id);
       return res.json({ ok: true });
     }
     if (resource === 'account-access' && req.method === 'PATCH') {
       if (typeof req.body?.access !== 'boolean') return res.status(400).json({ error: 'Permissão inválida.' });
-      const account = await setAccountAccess(String(req.body.id || req.body.user_id || ''), req.body.access);
+      const targetId = String(req.body.id || req.body.user_id || '');
+      if (targetId && targetId === String(user.id || '')) {
+        return res.status(400).json({ error: 'Você não pode pausar ou liberar o próprio acesso.' });
+      }
+      const account = await setAccountAccess(targetId, req.body.access);
       return account ? res.json({ account }) : res.status(400).json({ error: 'Conta indisponível ou protegida.' });
     }
     return res.status(405).json({ error: 'Ação não disponível.' });
