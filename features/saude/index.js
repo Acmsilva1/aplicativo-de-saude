@@ -70,6 +70,35 @@ function navRow({ action, id, icon, label, meta = '', detail = '', disabled = fa
   </button></li>`;
 }
 
+function renderSelectionDrill({
+  label,
+  title,
+  valueLabel,
+  rowsHtml,
+  hiddenHtml = '',
+  disabled = false,
+}) {
+  const titleId = `drill-title-${String(label || 'opcao').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  return `<div class="saude-student-picker saude-selection-drill${disabled ? ' is-disabled' : ''}" data-student-drill>
+    ${hiddenHtml}
+    <button type="button" class="saude-drill-trigger" data-student-drill-toggle aria-haspopup="dialog" aria-expanded="false"${disabled ? ' disabled' : ''}>
+      <span class="saude-drill-trigger__label">${esc(label)}</span>
+      <span class="saude-drill-trigger__value">${esc(valueLabel)}</span>
+      <span class="saude-drill-trigger__chevron" aria-hidden="true">›</span>
+    </button>
+    <div class="saude-drill-sheet" data-student-drill-sheet hidden>
+      <button type="button" class="saude-drill-sheet__backdrop" data-student-drill-dismiss tabindex="-1" aria-label="Fechar seletor"></button>
+      <section class="saude-drill-sheet__panel" role="dialog" aria-modal="true" aria-labelledby="${esc(titleId)}">
+        <header class="saude-drill-sheet__header">
+          <h2 id="${esc(titleId)}">${esc(title)}</h2>
+          <button type="button" class="saude-icon-btn" data-student-drill-dismiss aria-label="Fechar">×</button>
+        </header>
+        <ul class="saude-drill-list" role="listbox" data-student-drill-list>${rowsHtml}</ul>
+      </section>
+    </div>
+  </div>`;
+}
+
 function renderProfessorDrill(professors = [], selectedProfessorId = '', { name = 'professor_id', required = false, disabled = false } = {}) {
   const selected = professors.find((item) => profileId(item) === String(selectedProfessorId)) || professors[0] || null;
   const id = selected ? profileId(selected) : '';
@@ -81,15 +110,14 @@ function renderProfessorDrill(professors = [], selectedProfessorId = '', { name 
       ${active ? '<span class="saude-nav-meta">Atual</span>' : ''}
     </button></li>`;
   }).join('');
-  return `<div class="saude-student-picker saude-selection-drill${disabled ? ' is-disabled' : ''}" data-student-drill>
-    <input type="hidden" name="${esc(name)}" value="${esc(id)}"${required ? ' required' : ''}${disabled ? ' disabled' : ''}>
-    <button type="button" class="saude-drill-trigger" data-student-drill-toggle aria-haspopup="listbox" aria-expanded="false"${disabled ? ' disabled' : ''}>
-      <span class="saude-drill-trigger__label">Professor</span>
-      <span class="saude-drill-trigger__value">${esc(selected ? profileName(selected) : 'Selecione')}</span>
-      <span class="saude-drill-trigger__chevron" aria-hidden="true">›</span>
-    </button>
-    <ul class="saude-drill-list" role="listbox" data-student-drill-list hidden>${rows || '<li class="saude-empty-row">Nenhum professor ativo.</li>'}</ul>
-  </div>`;
+  return renderSelectionDrill({
+    label: 'Professor',
+    title: 'Selecionar professor',
+    valueLabel: selected ? profileName(selected) : 'Selecione',
+    rowsHtml: rows || '<li class="saude-empty-row">Nenhum professor ativo.</li>',
+    hiddenHtml: `<input type="hidden" name="${esc(name)}" value="${esc(id)}"${required ? ' required' : ''}${disabled ? ' disabled' : ''}>`,
+    disabled,
+  });
 }
 
 function renderStudentDrill(profiles = [], selectedUserId = '', { name = '', required = false, disabled = false } = {}) {
@@ -107,15 +135,14 @@ function renderStudentDrill(profiles = [], selectedUserId = '', { name = '', req
     </button></li>`;
   }).join('');
   const hidden = name ? `<input type="hidden" name="${esc(name)}" value="${esc(id)}"${required ? ' required' : ''}${disabled ? ' disabled' : ''}>` : '';
-  return `<div class="saude-student-picker saude-selection-drill${disabled ? ' is-disabled' : ''}" data-student-drill>
-    ${hidden}
-    <button type="button" class="saude-drill-trigger" data-student-drill-toggle aria-haspopup="listbox" aria-expanded="false"${disabled ? ' disabled' : ''}>
-      <span class="saude-drill-trigger__label">Aluno</span>
-      <span class="saude-drill-trigger__value">${esc(profileName(selected))}</span>
-      <span class="saude-drill-trigger__chevron" aria-hidden="true">›</span>
-    </button>
-    <ul class="saude-drill-list" role="listbox" data-student-drill-list hidden>${rows}</ul>
-  </div>`;
+  return renderSelectionDrill({
+    label: 'Aluno',
+    title: 'Selecionar aluno',
+    valueLabel: profileName(selected),
+    rowsHtml: rows,
+    hiddenHtml: hidden,
+    disabled,
+  });
 }
 
 function renderDietStartModal(templates = []) {
@@ -582,21 +609,43 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   }));
 
   container.querySelectorAll('[data-module]').forEach((button) => button.addEventListener('click', () => onNavigate?.(button.dataset.module)));
-  const setDrillOpen = (drill, open) => {
+  const setDrillOpen = (drill, open, { restoreFocus = true } = {}) => {
     if (!drill) return;
-    const list = drill.querySelector('[data-student-drill-list]');
+    const sheet = drill.querySelector('[data-student-drill-sheet]');
     const toggle = drill.querySelector('[data-student-drill-toggle]');
-    if (!list || !toggle || toggle.disabled) return;
+    if (!sheet || !toggle || toggle.disabled) return;
+    if (open) {
+      container.querySelectorAll('[data-student-drill].is-open').forEach((other) => {
+        if (other !== drill) setDrillOpen(other, false, { restoreFocus: false });
+      });
+    }
     drill.classList.toggle('is-open', open);
-    list.hidden = !open;
+    sheet.hidden = !open;
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      const selected = sheet.querySelector('.saude-drill-option.is-selected') || sheet.querySelector('.saude-drill-option');
+      selected?.focus?.();
+    } else if (restoreFocus) {
+      toggle.focus?.();
+    }
   };
   container.querySelectorAll('[data-student-drill]').forEach((drill) => {
     drill.querySelector('[data-student-drill-toggle]')?.addEventListener('click', () => {
       const open = drill.querySelector('[data-student-drill-toggle]')?.getAttribute('aria-expanded') !== 'true';
       setDrillOpen(drill, open);
     });
+    drill.querySelectorAll('[data-student-drill-dismiss]').forEach((button) => {
+      button.addEventListener('click', () => setDrillOpen(drill, false));
+    });
   });
+  const onDrillKeydown = (event) => {
+    if (event.key !== 'Escape') return;
+    const openDrill = container.querySelector('[data-student-drill].is-open');
+    if (!openDrill) return;
+    event.preventDefault();
+    setDrillOpen(openDrill, false);
+  };
+  container.addEventListener('keydown', onDrillKeydown);
   container.querySelectorAll('[data-student-choice]').forEach((button) => button.addEventListener('click', () => {
     setDrillOpen(button.closest('[data-student-drill]'), false);
     onNavigate?.('users', button.dataset.studentChoice);
