@@ -4,6 +4,7 @@ import {
   readBiometricPreference,
   supportsPlatformAuth,
 } from './biometric.js';
+import { getLoginTrialNoteKind, loginTrialNoteHtml } from '../../lib/trial.js';
 import appInfo from '../../package.json';
 
 export function renderLogin(container, {
@@ -11,9 +12,11 @@ export function renderLogin(container, {
   error = '',
   biometricSupported = false,
   preferBiometric = false,
+  user = null,
 } = {}) {
   const pref = readBiometricPreference();
   const toggleChecked = preferBiometric || isBiometricPreferred();
+  const trialNote = loginTrialNoteHtml(getLoginTrialNoteKind(user));
   container.innerHTML = `
     <main class="login-layout">
       <section class="login-story" aria-label="Ritmo Saúde">
@@ -43,7 +46,7 @@ export function renderLogin(container, {
           </header>
           <h2>Acesse sua rotina</h2>
           <p class="login-subtitle">Entre com o e-mail e a senha definidos no convite. Se ainda não criou a senha, use o link do e-mail ou peça um novo ao administrador.</p>
-          <p class="login-trial-note">Uso de teste: <strong>30 dias</strong> a partir do primeiro acesso com a sua senha.</p>
+          <p class="login-trial-note">${trialNote}</p>
           <div class="login-access-card">
             <form id="login-form" class="login-form" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
               <label for="email">E-mail</label>

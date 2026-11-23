@@ -14,6 +14,7 @@ import {
   supportsPlatformAuth,
   writeBiometricPreference,
 } from './auth/biometric.js';
+import { syncTrialLocalFlags } from '../lib/trial.js';
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
@@ -174,6 +175,7 @@ async function logout(){
   dismiss=showBusyStatus({title:'Saindo',detail:'Encerrando sua sessão…'});
  }
  try{
+  if(state.user)syncTrialLocalFlags(state.user);
   await saves.idle();
   await request('/api/auth?resource=logout',{method:'POST',body:'{}'});
   Object.assign(state,{...emptySessionState});
@@ -404,7 +406,7 @@ async function createAccount(payload){
   state.notice={text:error.message,type:'error'};
  }finally{endLoading();render();}
 }
-function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();if(state.user.trial_expired)return trialExpired();app.dataset.module=state.module;renderSaudeContent(app,{state,
+function render(){if(state.user)syncTrialLocalFlags(state.user);if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();if(state.user.trial_expired)return trialExpired();app.dataset.module=state.module;renderSaudeContent(app,{state,
  onNavigate:navigate,
  onLogout:logout,
  onCreateAccount:payload=>createAccount(payload),
