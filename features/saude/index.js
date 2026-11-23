@@ -256,22 +256,24 @@ function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = 
   </section>`;
 }
 
-function renderDietMeals(meals = [], foods = []) {
-  return meals.map((meal) => `<li class="saude-diet-meal"><div class="saude-diet-meal__head"><span class="saude-meal-emoji" aria-hidden="true">${mealEmoji(meal.tipo)}</span><span class="saude-diet-meal__time">${esc(meal.horario || '—')}</span><strong>${esc(meal.titulo || DIET_MEALS.find((entry) => entry.tipo === meal.tipo)?.titulo || meal.tipo)}</strong></div>
+function renderDietMeals(meals = [], foods = [], { hideEmpty = false } = {}) {
+  const list = hideEmpty ? meals.filter((meal) => (meal.itens || []).length) : meals;
+  return list.map((meal) => `<li class="saude-diet-meal"><div class="saude-diet-meal__head"><span class="saude-meal-emoji" aria-hidden="true">${mealEmoji(meal.tipo)}</span><span class="saude-diet-meal__time">${esc(meal.horario || '—')}</span><strong>${esc(meal.titulo || DIET_MEALS.find((entry) => entry.tipo === meal.tipo)?.titulo || meal.tipo)}</strong></div>
       <ul class="saude-diet-items">${(meal.itens || []).map((item) => `<li>${renderDietFoodDetails(item, foods)}</li>`).join('') || '<li class="saude-empty-item">🍽️ Sem alimentos nesta refeição.</li>'}</ul></li>`).join('');
 }
 
 function renderDietDetail(diet, { editable = false, profile = null, showWeek = false, foods = [], templateMode = false } = {}) {
   if (!diet) return '<section class="module-page"><h1>Dieta</h1><p class="saude-empty-row">Selecione uma dieta para abrir os detalhes.</p></section>';
   const weekly = Boolean(diet.semanal);
+  const hideEmpty = !editable && !templateMode;
   const days = weekly && showWeek ? DIET_WEEK.map((day, index) => ({ day, meals: diet.semana?.[index]?.refeicoes || [] })) : null;
   const daily = weekly ? dietForDate(diet, todayDietDate()) : diet;
   const body = days
     ? `<div class="saude-week-detail">${days.map((entry) => {
       const dayDiet = { ...diet, semanal: false, refeicoes: entry.meals };
-      return `<section class="saude-week-detail__day"><h3>${esc(entry.day)}</h3><ul class="fin-list saude-diet-list">${renderDietMeals(entry.meals, foods) || '<li class="saude-empty-row">Nenhuma refeição cadastrada para este dia.</li>'}</ul>${renderDietNutritionTotal(dayDiet, foods)}</section>`;
+      return `<section class="saude-week-detail__day"><h3>${esc(entry.day)}</h3><ul class="fin-list saude-diet-list">${renderDietMeals(entry.meals, foods, { hideEmpty }) || '<li class="saude-empty-row">Nenhuma refeição cadastrada para este dia.</li>'}</ul>${renderDietNutritionTotal(dayDiet, foods)}</section>`;
     }).join('')}</div>`
-    : `<ul class="fin-list saude-diet-list">${renderDietMeals(daily?.refeicoes || [], foods) || '<li class="saude-empty-row">Este plano ainda não tem refeições.</li>'}</ul>${renderDietNutritionTotal(daily || diet, foods)}`;
+    : `<ul class="fin-list saude-diet-list">${renderDietMeals(daily?.refeicoes || [], foods, { hideEmpty }) || '<li class="saude-empty-row">Este plano ainda não tem refeições.</li>'}</ul>${renderDietNutritionTotal(daily || diet, foods)}`;
   const eyebrow = weekly ? (days ? '🗓️ PLANO SEMANAL · SEGUNDA A DOMINGO' : '🗓️ PLANO SEMANAL · HOJE') : '📌 PLANO FIXO';
   return `<section class="module-page">
     ${templateMode ? '<button class="back-link" type="button" data-module="portfolio">‹ Voltar para portfólio</button>' : '<button class="back-link" type="button" data-action="back-to-diets">‹ Voltar para dietas</button>'}

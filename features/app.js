@@ -436,12 +436,16 @@ async function load(module,targetId=''){
     if(dietsHaveStructure(state.diets)){
      const cached=hydrateDietsFromCache(ownerId,state.diets.map(diet=>({id:diet.id,updated_at:diet.updated_at})));
      if(cached)state.diets=cached;
-     // Já temos estrutura em memória (ex.: veio da home); evita refetch.
-    }else{
+    }
+    // Catálogo nutricional é obrigatório no detalhe; home/lista não trazem foods.
+    if(!dietsHaveStructure(state.diets)||!state.foodsLoaded){
      const data=await request('/api/saude?resource=dietas&nutrition=true');
-     state.diets=data.diets;
+     if(!dietsHaveStructure(state.diets)){
+      state.diets=data.diets;
+      writeDietsCache(ownerId,state.diets);
+     }
      state.foods=data.foods||[];
-     writeDietsCache(ownerId,state.diets);
+     state.foodsLoaded=true;
     }
    }else{
     state.diets=(await request('/api/saude?resource=dietas')).diets;
