@@ -14,6 +14,12 @@ import {
   supportsPlatformAuth,
   writeBiometricPreference,
 } from './auth/biometric.js';
+import {
+  clearDietCacheForUser,
+  dietsHaveStructure,
+  hydrateDietsFromCache,
+  writeDietsCache,
+} from './saude/data/dietCache.js';
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
@@ -73,18 +79,42 @@ async function request(url,options={}){
  }finally{clearTimeout(timeout);}
 }
 const mutate=(resource,method,body)=>request(`/api/saude?resource=${resource}`,{method,body:JSON.stringify(body)});
+function syncBackgroundSaveStatus(pending){
+ const wrap=app.querySelector('.content-wrap');
+ if(!wrap)return;
+ let status=wrap.querySelector('.background-save-status');
+ if(pending){
+  if(!status){
+   status=document.createElement('div');
+   status.className='background-save-status';
+   status.setAttribute('role','status');
+   status.setAttribute('aria-live','polite');
+   status.textContent='Salvando alterações…';
+   wrap.prepend(status);
+  }
+ }else status?.remove();
+}
 const saves=createBackgroundSaves(({settled})=>{
  state.pendingSaves=saves.pending;
+ const sameModule=app.dataset.module===state.module;
+ const form=sameModule?app.querySelector('form'):null;
+ const preserveUi=sameModule?app.querySelector('[data-preserve-ui]'):null;
  // A completion must not replace a form the user has started typing in.
- if(settled&&app.dataset.module===state.module&&app.querySelector('form')){
+ if(settled&&form){
   const forms=[...app.querySelectorAll('form')];
   const focused=document.activeElement;
   render();
-  app.querySelectorAll('form').forEach((form,index)=>{if(forms[index])form.replaceWith(forms[index]);});
-  if(focused&&forms.some(form=>form.contains(focused)))focused.focus({preventScroll:true});
+  app.querySelectorAll('form').forEach((formEl,index)=>{if(forms[index])formEl.replaceWith(forms[index]);});
+  if(focused&&forms.some(formEl=>formEl.contains(focused)))focused.focus({preventScroll:true});
+ }else if(preserveUi){
+  // Modal sem <form> (ex.: escolha de modelo da dieta): não remonta a UI.
+  syncBackgroundSaveStatus(saves.pending);
  }else render();
 });
-window.addEventListener('beforeunload',event=>{if(saves.pending){event.preventDefault();event.returnValue='';}});
+window.addEventListener('beforeunload',event=>{
+ if(waterBuffer?.parts?.length)flushWaterBuffer();
+ if(saves.pending||waterBuffer?.parts?.length){event.preventDefault();event.returnValue='';}
+});
 function saved(text){state.notice={text,type:'success'};}
 function failed(error){state.notice={text:`Não foi possível confirmar o salvamento: ${error.message} A tela voltou ao último estado confirmado.`,type:'error'};}
 function savePlan(payload,{template=false,remove=false,visibility=false}={}){
@@ -105,7 +135,11 @@ function savePlan(payload,{template=false,remove=false,visibility=false}={}){
  return saves.save({key:`${field}:${template?'all':userId}`,read:()=>state[field],write,project,
   persist:()=>mutate(template?'professor-portfolio':'professor-dieta',remove?'DELETE':payload.id?'PATCH':'POST',payload),
   confirm:(list,result)=>remove?project(list):project(list).map(item=>item.id===id?{...item,...(template?result.template:result)}:item),
-  success:()=>{state.profilesLoaded=false;saved(remove?'Remoção salva.':visibility?'Status da dieta salvo.':'Plano salvo.');},
+  success:()=>{
+   state.profilesLoaded=false;
+   if(!template&&userId)clearDietCacheForUser(userId);
+   saved(remove?'Remoção salva.':visibility?'Status da dieta salvo.':'Plano salvo.');
+  },
   failure:error=>{failed(error);if(!remove&&!visibility&&state.module===target&&(template||state.selectedUserId===userId)){
    state.module=template?(payload.id?'editTemplate':'createTemplate'):(payload.id?'editDiet':'createDiet');
    state[template?'templateDraft':'dietDraft']=draft;
@@ -113,12 +147,67 @@ function savePlan(payload,{template=false,remove=false,visibility=false}={}){
   }},
  });
 }
+const WATER_DEBOUNCE_MS=1200;
+let waterBuffer=null;
+function applyWaterParts(base,parts){
+ let next=structuredClone(base);
+ for(const part of parts){
+  next={
+   ...next,
+   total_ml:Number(next.total_ml||0)+part.amount,
+   checkins:[...(next.checkins||[]),{id:`pending-${part.requestId}`,amount_ml:part.amount,time:part.time}],
+  };
+ }
+ return next;
+}
+function publishWaterBuffer(){
+ if(!waterBuffer||!state.water)return;
+ state.water=applyWaterParts(waterBuffer.base,waterBuffer.parts);
+ if(app.querySelector('[data-preserve-ui]'))syncBackgroundSaveStatus(true);
+ else render();
+}
+function flushWaterBuffer(){
+ const buf=waterBuffer;
+ waterBuffer=null;
+ if(!buf?.parts?.length)return Promise.resolve();
+ clearTimeout(buf.timer);
+ // Devolve ao base para o lane projetar sem duplicar o otimista do debounce.
+ state.water=structuredClone(buf.base);
+ return saves.save({
+  key:'water',
+  read:()=>state.water,
+  write:value=>{state.water=value;},
+  project:value=>applyWaterParts(value,buf.parts),
+  persist:async()=>{
+   let last;
+   for(const part of buf.parts){
+    last=await mutate('agua-checkin','POST',{amount_ml:part.amount,request_id:part.requestId});
+   }
+   return last;
+  },
+  confirm:(_base,result)=>result,
+  success:()=>saved(buf.parts.length>1?'Consumos salvos.':'Consumo salvo.'),
+  failure:failed,
+ });
+}
 function saveWater(amount){
- if(!state.water?.goal_ml)return;
- const entry={id:`pending-${crypto.randomUUID()}`,amount_ml:amount,time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
- return saves.save({key:'water',read:()=>state.water,write:value=>{state.water=value;},
-  project:value=>({...value,total_ml:Number(value.total_ml||0)+amount,checkins:[...(value.checkins||[]),entry]}),
-  persist:()=>mutate('agua-checkin','POST',{amount_ml:amount}),success:()=>saved('Consumo salvo.'),failure:failed});
+ if(!state.water?.goal_ml){
+  state.notice={text:'Defina uma meta de água antes de registrar o consumo.',type:'error'};
+  render();
+  return;
+ }
+ const part={
+  amount,
+  requestId:crypto.randomUUID(),
+  time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+ };
+ if(!waterBuffer){
+  waterBuffer={base:structuredClone(state.water),parts:[],timer:null};
+ }
+ waterBuffer.parts.push(part);
+ publishWaterBuffer();
+ clearTimeout(waterBuffer.timer);
+ waterBuffer.timer=setTimeout(()=>{flushWaterBuffer();},WATER_DEBOUNCE_MS);
 }
 function saveGoal(id,goal,mode){
  const nome=state.waterGoalName;
@@ -174,8 +263,11 @@ async function logout(){
   dismiss=showBusyStatus({title:'Saindo',detail:'Encerrando sua sessão…'});
  }
  try{
+  await flushWaterBuffer();
   await saves.idle();
+  const previousUserId=state.user?.id;
   await request('/api/auth?resource=logout',{method:'POST',body:'{}'});
+  if(previousUserId)clearDietCacheForUser(previousUserId);
   Object.assign(state,{...emptySessionState});
   forcePasswordLogin=false;
   dismiss();
@@ -273,6 +365,7 @@ async function bootAuth(){
 }
 async function load(module,targetId=''){
  const userId=['diet-detail','editDiet'].includes(module)?state.selectedUserId:(targetId||state.selectedUserId);
+ await flushWaterBuffer();
  if(['home','users'].includes(module))await saves.idle();
  else if(['diets','diet-detail','editDiet'].includes(module))await saves.idle([`diets:${userId}`]);
  else if(module==='monitor')await saves.idle([`goal:${userId}`]);
@@ -314,9 +407,21 @@ async function load(module,targetId=''){
    if(module==='createTemplate')state.template=null;
    const requests=[];
    if(module==='monitor')requests.push(request(`/api/saude?resource=professor-agua&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{state.monitor=data;}));
-   if(['diets','diet-detail','editDiet'].includes(module)){
-    const summary=module==='diets'?'&summary=true':'';
-    requests.push(request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}${summary}`).then(data=>{state.diets=data.diets;}));
+   if(module==='diets'){
+    requests.push(request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}&summary=true`).then(data=>{state.diets=data.diets;}));
+   }else if(['diet-detail','editDiet'].includes(module)){
+    requests.push((async()=>{
+     const ownerId=state.selectedUserId;
+     let summaries=state.diets;
+     if(!summaries.length||summaries.some(diet=>!diet.updated_at)){
+      summaries=(await request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(ownerId)}&summary=true`)).diets;
+     }
+     const cached=hydrateDietsFromCache(ownerId,summaries);
+     if(cached){state.diets=cached;return;}
+     const data=await request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(ownerId)}`);
+     state.diets=data.diets;
+     writeDietsCache(ownerId,state.diets);
+    })());
    }
    await Promise.all(requests);
   }else{
@@ -324,12 +429,24 @@ async function load(module,targetId=''){
     const [water,diets]=await Promise.all([request('/api/saude?resource=agua'),request('/api/saude?resource=dietas')]);
     state.water=water;
     state.diets=diets.diets;
+    writeDietsCache(state.user.id,state.diets);
    }else if(module==='water')state.water=await request('/api/saude?resource=agua');
    else if(module==='diet-detail'){
-    const data=await request('/api/saude?resource=dietas&nutrition=true');
-    state.diets=data.diets;
-    state.foods=data.foods||[];
-   }else state.diets=(await request('/api/saude?resource=dietas')).diets;
+    const ownerId=state.user.id;
+    if(dietsHaveStructure(state.diets)){
+     const cached=hydrateDietsFromCache(ownerId,state.diets.map(diet=>({id:diet.id,updated_at:diet.updated_at})));
+     if(cached)state.diets=cached;
+     // Já temos estrutura em memória (ex.: veio da home); evita refetch.
+    }else{
+     const data=await request('/api/saude?resource=dietas&nutrition=true');
+     state.diets=data.diets;
+     state.foods=data.foods||[];
+     writeDietsCache(ownerId,state.diets);
+    }
+   }else{
+    state.diets=(await request('/api/saude?resource=dietas')).diets;
+    writeDietsCache(state.user.id,state.diets);
+   }
   }
   if(['diet-detail','editDiet'].includes(module))state.diet=state.diets.find(x=>x.id===(targetId||state.diet?.id))||null;
   else if(module==='createDiet'||module==='createTemplate')state.diet=null;

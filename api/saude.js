@@ -1,6 +1,6 @@
 import { getUser, isMockAuthEnabled } from '../features/auth/service/authService.js';
 import { saudeStore as store } from '../features/saude/data/saudeStore.js';
-import { validWaterAmount, validWaterGoal } from '../features/saude/service/waterIntakeService.js';
+import { validWaterAmount, validWaterGoal, validWaterRequestId } from '../features/saude/service/waterIntakeService.js';
 import { hasSupabaseConfig } from '../lib/env.js';
 import { isTrialBlocked, TRIAL_EXPIRED_CODE, TRIAL_EXPIRED_MESSAGE } from '../lib/trial.js';
 
@@ -126,14 +126,23 @@ export default async function handler(req, res) {
       return res.json(await store.getWater(id));
     }
     if (resource === 'agua-checkin' && !professor && req.method === 'POST') {
-      const water = await store.getWater(id);
-      if (!water.goal_ml) {
+      const goalMl = await store.peekWaterGoal(id);
+      if (!goalMl) {
         return res.status(400).json({ error: 'Peça ao professor para criar sua meta de água.' });
       }
       if (!validWaterAmount(req.body.amount_ml)) {
         return res.status(400).json({ error: 'Volume inválido.' });
       }
-      return res.status(201).json(await store.addWater(id, Number(req.body.amount_ml)));
+      const requestId = req.body.request_id;
+      // Coluna request_id é uuid; aceita só UUID (compatível com validWaterRequestId).
+      if (requestId != null && requestId !== '') {
+        const asText = String(requestId);
+        if (!validWaterRequestId(asText)
+          || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(asText)) {
+          return res.status(400).json({ error: 'Identificador de check-in inválido.' });
+        }
+      }
+      return res.status(201).json(await store.addWater(id, Number(req.body.amount_ml), requestId));
     }
     return res.status(403).json({ error: 'Ação não permitida para seu perfil.' });
   } catch (error) {

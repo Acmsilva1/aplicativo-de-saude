@@ -214,6 +214,8 @@ export function createDemoSession(req, res) {
 export function createDemoSessionForUserId(req, res, userId) {
   const account = accounts.find((x) => x.id === userId && x.access);
   if (!account) return null;
+  // Não emitir cookie se ainda falta definir senha (ex.: login biométrico prematuro).
+  if (account.must_change_password) return publicAccount(account);
   ensureDemoTrialStarted(account);
   const token = randomUUID();
   sessions.set(token, account.id);

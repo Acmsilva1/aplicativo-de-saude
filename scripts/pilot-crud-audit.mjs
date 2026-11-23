@@ -76,15 +76,19 @@ try{
  assert.equal((await health(student,'agua')).status,401);
  assert.equal((await auth(admin,'account-access','PATCH',{id:student.id,access:true})).status,200);
  await login(student);done('block existing session and reenable account');
- assert.equal((await auth(admin,'accounts','DELETE',{id:professor.id})).status,400);
- assert.ok(checked(await db.from('health_user_profiles').select('user_id').eq('user_id',professor.id).single()));
- done('professor linked to student cannot be deleted; profile preserved');
  assert.equal((await health(professor,'professor-dieta','DELETE',{id,user_id:student.id})).status,200);
  assert.equal((await health(student,'dietas')).data.diets.length,0);
  assert.equal((await health(professor,'professor-agua-meta','DELETE',{user_id:student.id})).status,200);
  assert.equal((await health(student,'agua')).data.goal_ml,null);
+ done('diet and goal deletion');
+ const deleted=await auth(admin,'accounts','DELETE',{id:professor.id});
+ assert.equal(deleted.status,200);
+ assert.ok((deleted.data.unlinkedStudents||0)>=1);
+ assert.equal((await db.from('health_user_profiles').select('user_id').eq('user_id',professor.id).maybeSingle()).data,null);
+ assert.equal(checked(await db.from('health_user_roles').select('professor_id').eq('user_id',student.id).single()).professor_id,null);
+ done('professor delete unlinks students then removes account');
  assert.equal((await auth(student,'logout','POST',{})).status,200);
- done('diet and goal deletion; logout');
+ done('student logout after professor removed');
 }catch{checks.push({name:'CRUD flow failed',ok:false,detail:'Detailed assertions suppressed to protect temporary credentials.'});process.exitCode=1;}
 finally{
  let cleaned=0;for(const actor of [...created].reverse()){const r=await db.auth.admin.deleteUser(actor.id);if(!r.error)cleaned++;}

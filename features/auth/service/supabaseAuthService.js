@@ -218,7 +218,9 @@ export async function createSessionForUserId(req, res, userId) {
     token_hash: link.properties.hashed_token,
   });
   if (error || !data?.session) return null;
-  if (!account.must_change_password && !account.trial_exempt && !account.trial_started_at) {
+  // Não emitir cookie se ainda falta definir senha (ex.: login biométrico prematuro).
+  if (account.must_change_password) return account;
+  if (!account.trial_exempt && !account.trial_started_at) {
     await ensureTrialStarted(account.id, account.role);
     account = await loadAccount(account.id);
   }
@@ -268,6 +270,11 @@ export async function completeInvite(req, res, { access_token, refresh_token, pa
     return { error: 'Link inválido ou expirado. Peça um novo convite ao administrador.' };
   }
 
+  // Validar conta ativa antes de mutar senha ou emitir cookie.
+  let account = await loadAccount(userData.user.id, { includeDisabled: true });
+  if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
+  if (!account.access) return { error: 'Conta pausada. Consulte o administrador.' };
+
   const admin = getSupabaseAdmin();
   // updateUser do client exige sessão interna; no servidor usamos a Admin API com o user_id do JWT.
   const { error: updateErr } = await admin.auth.admin.updateUserById(userData.user.id, {
@@ -300,10 +307,9 @@ export async function completeInvite(req, res, { access_token, refresh_token, pa
   }
   setSessionCookie(req, res, session);
 
-  let account = await loadAccount(userData.user.id);
-  if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
   await ensureTrialStarted(account.id, account.role);
   account = await loadAccount(account.id);
+  if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
   return { account };
 }
 
@@ -494,6 +500,8 @@ export async function sendPasswordSetupEmail(id, req = null) {
       const { error } = await admin.from('health_user_roles').update({ must_change_password: true }).eq('user_id', id);
       if (error) return { error: 'Não foi possível exigir a troca de senha. Nenhum e-mail foi enviado.' };
     }
+    // Derruba sessões ativas para forçar o fluxo do link de senha.
+    await revokeAllSessionsForUser(id);
     const redirectTo = appPublicUrl(req);
     const { error } = await getSupabaseAnon().auth.resetPasswordForEmail(account.email, { redirectTo });
     if (!error) {
@@ -597,6 +605,29 @@ export async function updateAccount(id, { name, email, role, professor_id, phone
   return { account: await loadAccount(id, { includeDisabled: true }) };
 }
 
+/** Invalida todas as sessões Auth do usuário (defense in depth além da API). */
+async function revokeAllSessionsForUser(userId) {
+  if (!userId) return;
+  try {
+    const admin = getSupabaseAdmin();
+    const { data: authUser, error: userErr } = await admin.auth.admin.getUserById(userId);
+    if (userErr || !authUser?.user?.email) return;
+    const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: authUser.user.email,
+    });
+    if (linkErr || !link?.properties?.hashed_token) return;
+    const { data, error } = await createUserClient().auth.verifyOtp({
+      type: 'email',
+      token_hash: link.properties.hashed_token,
+    });
+    if (error || !data?.session?.access_token) return;
+    await admin.auth.admin.signOut(data.session.access_token, 'global');
+  } catch (error) {
+    console.warn('[auth] falha ao revogar sessões:', error?.message || error);
+  }
+}
+
 export async function setAccountAccess(id, access) {
   const current = await loadAccount(id, { includeDisabled: true });
   if (!current || current.role === 'admin') return null;
@@ -605,6 +636,7 @@ export async function setAccountAccess(id, access) {
     .update({ access_enabled: access })
     .eq('user_id', id);
   if (error) return null;
+  if (!access) await revokeAllSessionsForUser(id);
   return loadAccount(id, { includeDisabled: true });
 }
 
@@ -637,6 +669,7 @@ export async function deleteAccount(id) {
   }
 
   const cleanupSteps = [
+    ['health_webauthn_credentials', 'user_id'],
     ['health_diet_templates', 'professor_id'],
     ['health_water_entries', 'user_id'],
     ['health_water_goals', 'user_id'],
@@ -651,6 +684,7 @@ export async function deleteAccount(id) {
     if (error) return deleteFailure(error, `Falha ao limpar dados em ${table}.`);
   }
 
+  await revokeAllSessionsForUser(id);
   const { error } = await admin.auth.admin.deleteUser(id);
   return error ? deleteFailure(error, 'Falha ao remover o usuário de autenticação.') : { ok: true, unlinkedStudents };
 }

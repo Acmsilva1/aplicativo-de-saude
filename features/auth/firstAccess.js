@@ -180,7 +180,7 @@ export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePa
   card.querySelector('[data-biometric-password]').addEventListener('click', () => onUsePassword?.());
   shell.append(card);
   container.replaceChildren(shell);
-  queueMicrotask(() => unlockBtn.click());
+  queueMicrotask(() => unlockBtn.focus({ preventScroll: true }));
 }
 
 /** Overlay leve de ocupado (logout, boot, ações longas fora do app-shell). */

@@ -68,10 +68,37 @@ function formatTime(value) {
   return text.length >= 5 ? text.slice(0, 5) : text;
 }
 
+const PLAN_COLS = 'id, title, objective, notes, meta_calorias, semanal, status, updated_at';
+const MEAL_COLS = 'id, diet_plan_id, weekday, meal_type, scheduled_at, position';
+const ITEM_COLS = 'meal_id, name, quantity, notes, alimento_id, quantidade_valor, quantidade_unidade, position';
+const WATER_HISTORY_DAYS = 30;
+
+function shiftDietDate(dateStr, deltaDays) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const yy = utc.getUTCFullYear();
+  const mm = String(utc.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(utc.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** Início do dia civil America/Sao_Paulo como timestamptz ISO (UTC-3 fixo). */
+function saoPauloDayStartIso(dateStr) {
+  return `${dateStr}T00:00:00.000-03:00`;
+}
+
+function normalizeRequestId(value) {
+  const raw = String(value || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+    return raw.toLowerCase();
+  }
+  return randomUUID();
+}
+
 async function loadDietRows(userId, { includeHidden = false } = {}) {
   let query = db()
     .from('health_diet_plans')
-    .select('*')
+    .select(PLAN_COLS)
     .eq('user_id', userId);
   if (!includeHidden) query = query.eq('status', 'active');
   const { data: plans, error } = await query.order('updated_at', { ascending: false });
@@ -81,7 +108,7 @@ async function loadDietRows(userId, { includeHidden = false } = {}) {
   const planIds = plans.map((p) => p.id);
   const { data: meals, error: mealsErr } = await db()
     .from('health_diet_meals')
-    .select('*')
+    .select(MEAL_COLS)
     .eq('user_id', userId)
     .in('diet_plan_id', planIds)
     .order('position', { ascending: true });
@@ -91,7 +118,7 @@ async function loadDietRows(userId, { includeHidden = false } = {}) {
   const { data: items, error: itemsErr } = mealIds.length
     ? await db()
       .from('health_diet_items')
-      .select('*')
+      .select(ITEM_COLS)
       .eq('user_id', userId)
       .in('meal_id', mealIds)
       .order('position', { ascending: true })
@@ -153,16 +180,12 @@ async function loadDietRows(userId, { includeHidden = false } = {}) {
   });
 }
 
-async function replaceDietStructure(userId, diet) {
-  const admin = db();
-  await admin.from('health_diet_items').delete().eq('user_id', userId).in(
-    'meal_id',
-    (
-      await admin.from('health_diet_meals').select('id').eq('user_id', userId).eq('diet_plan_id', diet.id)
-    ).data?.map((m) => m.id) || ['00000000-0000-0000-0000-000000000000']
-  );
-  await admin.from('health_diet_meals').delete().eq('user_id', userId).eq('diet_plan_id', diet.id);
+function isMissingRpc(error) {
+  const msg = String(error?.message || '');
+  return error?.code === 'PGRST202' || /Could not find the function|schema cache/i.test(msg);
+}
 
+function buildDietStructureRows(userId, diet) {
   const mealRows = [];
   const itemRows = [];
 
@@ -201,7 +224,18 @@ async function replaceDietStructure(userId, diet) {
   } else {
     pushDay(0, diet.refeicoes);
   }
+  return { mealRows, itemRows };
+}
 
+async function replaceDietStructureLegacy(userId, diet, mealRows, itemRows) {
+  const admin = db();
+  await admin.from('health_diet_items').delete().eq('user_id', userId).in(
+    'meal_id',
+    (
+      await admin.from('health_diet_meals').select('id').eq('user_id', userId).eq('diet_plan_id', diet.id)
+    ).data?.map((m) => m.id) || ['00000000-0000-0000-0000-000000000000']
+  );
+  await admin.from('health_diet_meals').delete().eq('user_id', userId).eq('diet_plan_id', diet.id);
   if (mealRows.length) {
     const { error } = await admin.from('health_diet_meals').insert(mealRows);
     if (error) throw error;
@@ -210,6 +244,39 @@ async function replaceDietStructure(userId, diet) {
     const { error } = await admin.from('health_diet_items').insert(itemRows);
     if (error) throw error;
   }
+}
+
+async function replaceDietStructure(userId, diet) {
+  const { mealRows, itemRows } = buildDietStructureRows(userId, diet);
+  const mealsJson = mealRows.map((m) => ({
+    id: m.id,
+    weekday: m.weekday,
+    meal_type: m.meal_type,
+    title: m.title,
+    scheduled_at: m.scheduled_at || '',
+    position: m.position,
+  }));
+  const itemsJson = itemRows.map((i) => ({
+    id: i.id,
+    meal_id: i.meal_id,
+    name: i.name,
+    quantity: i.quantity || '',
+    notes: i.notes || '',
+    alimento_id: i.alimento_id == null ? '' : String(i.alimento_id),
+    quantidade_valor: i.quantidade_valor == null ? '' : String(i.quantidade_valor),
+    quantidade_unidade: i.quantidade_unidade || '',
+    position: i.position,
+  }));
+
+  const { error } = await db().rpc('health_replace_diet_structure', {
+    p_user_id: userId,
+    p_diet_plan_id: diet.id,
+    p_meals: mealsJson,
+    p_items: itemsJson,
+  });
+  if (!error) return;
+  if (!isMissingRpc(error)) throw error;
+  await replaceDietStructureLegacy(userId, diet, mealRows, itemRows);
 }
 
 function localDateFromTs(iso) {
@@ -232,6 +299,7 @@ function localTimeFromTs(iso) {
 export const supabaseSaudeStore = {
   async deleteUserData(id) {
     const admin = db();
+    await admin.from('health_webauthn_credentials').delete().eq('user_id', id);
     await admin.from('health_diet_templates').delete().eq('professor_id', id);
     await admin.from('health_water_entries').delete().eq('user_id', id);
     await admin.from('health_water_goals').delete().eq('user_id', id);
@@ -243,7 +311,7 @@ export const supabaseSaudeStore = {
   async getTemplates(ownerId) {
     const { data, error } = await db()
       .from('health_diet_templates')
-      .select('*')
+      .select('id, title, objective, notes, meta_calorias, semanal, template_data, updated_at')
       .eq('professor_id', ownerId)
       .order('updated_at', { ascending: false });
     if (error) throw error;
@@ -281,7 +349,7 @@ export const supabaseSaudeStore = {
         .update(payload)
         .eq('id', id)
         .eq('professor_id', ownerId)
-        .select('*')
+        .select('id, title, objective, notes, meta_calorias, semanal, template_data, updated_at')
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
@@ -306,8 +374,33 @@ export const supabaseSaudeStore = {
   async getProfessorUsers(professorId) {
     const students = await listAvailableStudents(professorId);
     if (!students.length) return [];
+
+    const { data: rpcData, error: rpcErr } = await db().rpc('health_professor_student_stats', {
+      p_professor_id: professorId,
+    });
+    if (!rpcErr) {
+      const byId = new Map((rpcData || []).map((row) => [row.user_id, row]));
+      return students.map((student) => {
+        const stats = byId.get(student.id);
+        return {
+          ...student,
+          diet_title: stats?.diet_title || 'Sem dieta',
+          diet_count: Number(stats?.diet_count || 0),
+          water: {
+            goal_ml: stats?.goal_ml ?? null,
+            nome: stats?.nome || 'Hidratação diária',
+            total_ml: Number(stats?.total_ml || 0),
+          },
+        };
+      });
+    }
+    if (!isMissingRpc(rpcErr)) throw rpcErr;
+
+    // Fallback multi-query (antes da migration de RPCs).
     const ids = students.map((student) => student.id);
-    const recentSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const today = todayDietDate();
+    const todayStart = saoPauloDayStartIso(today);
+    const tomorrowStart = saoPauloDayStartIso(shiftDietDate(today, 1));
     const [plansResult, goalsResult, entriesResult] = await Promise.all([
       db().from('health_diet_plans')
         .select('user_id, title, updated_at')
@@ -318,9 +411,10 @@ export const supabaseSaudeStore = {
         .select('user_id, goal_ml, nome')
         .in('user_id', ids),
       db().from('health_water_entries')
-        .select('user_id, amount_ml, recorded_at')
+        .select('user_id, amount_ml')
         .in('user_id', ids)
-        .gte('recorded_at', recentSince),
+        .gte('recorded_at', todayStart)
+        .lt('recorded_at', tomorrowStart),
     ]);
     if (plansResult.error) throw plansResult.error;
     if (goalsResult.error) throw goalsResult.error;
@@ -334,10 +428,8 @@ export const supabaseSaudeStore = {
       dietStats.set(plan.user_id, stats);
     }
     const goalByStudent = new Map((goalsResult.data || []).map((goal) => [goal.user_id, goal]));
-    const today = todayDietDate();
     const waterToday = new Map();
     for (const entry of entriesResult.data || []) {
-      if (localDateFromTs(entry.recorded_at) !== today) continue;
       waterToday.set(entry.user_id, (waterToday.get(entry.user_id) || 0) + Number(entry.amount_ml || 0));
     }
 
@@ -517,43 +609,80 @@ export const supabaseSaudeStore = {
     return (count || 0) > 0;
   },
 
+  async peekWaterGoal(id) {
+    const { data, error } = await db()
+      .from('health_water_goals')
+      .select('goal_ml')
+      .eq('user_id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.goal_ml ?? null;
+  },
+
   async getWater(id) {
+    const { data, error } = await db().rpc('health_water_snapshot', { p_user_id: id });
+    if (!error && data) {
+      return {
+        goal_ml: data.goal_ml ?? null,
+        nome: data.nome || 'Hidratação diária',
+        checkins: Array.isArray(data.checkins) ? data.checkins : [],
+        total_ml: Number(data.total_ml || 0),
+        date: data.date || todayDietDate(),
+        history: Array.isArray(data.history) ? data.history : [],
+      };
+    }
+    if (error && !isMissingRpc(error)) throw error;
+
     const date = todayDietDate();
-    const [goalResult, entriesResult] = await Promise.all([
+    const todayStart = saoPauloDayStartIso(date);
+    const tomorrowStart = saoPauloDayStartIso(shiftDietDate(date, 1));
+    const historyStart = saoPauloDayStartIso(shiftDietDate(date, -WATER_HISTORY_DAYS));
+    const [goalResult, todayResult, historyResult] = await Promise.all([
       db().from('health_water_goals')
-        .select('*')
+        .select('goal_ml, nome')
         .eq('user_id', id)
         .maybeSingle(),
       db().from('health_water_entries')
-        .select('*')
+        .select('id, amount_ml, recorded_at')
         .eq('user_id', id)
+        .gte('recorded_at', todayStart)
+        .lt('recorded_at', tomorrowStart)
+        .order('recorded_at', { ascending: false }),
+      db().from('health_water_entries')
+        .select('amount_ml, recorded_at')
+        .eq('user_id', id)
+        .gte('recorded_at', historyStart)
+        .lt('recorded_at', todayStart)
         .order('recorded_at', { ascending: false })
-        .limit(500),
+        .limit(400),
     ]);
     if (goalResult.error) throw goalResult.error;
-    if (entriesResult.error) throw entriesResult.error;
+    if (todayResult.error) throw todayResult.error;
+    if (historyResult.error) throw historyResult.error;
     const goalRow = goalResult.data;
-    const entries = entriesResult.data;
 
-    const mapped = (entries || []).map((entry) => ({
+    const checkins = (todayResult.data || []).map((entry) => ({
       id: entry.id,
       amount_ml: entry.amount_ml,
-      date: localDateFromTs(entry.recorded_at),
+      date,
       time: localTimeFromTs(entry.recorded_at),
       recorded_at: entry.recorded_at,
     }));
-    const today = mapped.filter((x) => x.date === date);
-    const historyDates = [...new Set(mapped.map((x) => x.date))].filter((d) => d !== date);
+    const byDay = new Map();
+    for (const entry of historyResult.data || []) {
+      const day = localDateFromTs(entry.recorded_at);
+      byDay.set(day, (byDay.get(day) || 0) + Number(entry.amount_ml || 0));
+    }
+    const history = [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([day, total_ml]) => ({ date: day, total_ml }));
     return {
       goal_ml: goalRow?.goal_ml ?? null,
       nome: goalRow?.nome || 'Hidratação diária',
-      checkins: today,
-      total_ml: today.reduce((s, x) => s + x.amount_ml, 0),
+      checkins,
+      total_ml: checkins.reduce((s, x) => s + x.amount_ml, 0),
       date,
-      history: historyDates.map((day) => ({
-        date: day,
-        total_ml: mapped.filter((x) => x.date === day).reduce((s, x) => s + x.amount_ml, 0),
-      })),
+      history,
     };
   },
 
@@ -575,22 +704,41 @@ export const supabaseSaudeStore = {
     return this.getWater(id);
   },
 
-  async addWater(id, amount) {
-    const { error } = await db().from('health_water_entries').insert({
+  async addWater(id, amount, requestId) {
+    const rid = normalizeRequestId(requestId);
+    const { data, error } = await db().rpc('health_water_checkin', {
+      p_user_id: id,
+      p_amount_ml: amount,
+      p_request_id: rid,
+    });
+    if (!error && data) {
+      return {
+        goal_ml: data.goal_ml ?? null,
+        nome: data.nome || 'Hidratação diária',
+        checkins: Array.isArray(data.checkins) ? data.checkins : [],
+        total_ml: Number(data.total_ml || 0),
+        date: data.date || todayDietDate(),
+        history: Array.isArray(data.history) ? data.history : [],
+      };
+    }
+    if (error && !isMissingRpc(error)) throw error;
+
+    const { error: insertErr } = await db().from('health_water_entries').insert({
       id: randomUUID(),
       user_id: id,
       amount_ml: amount,
       recorded_at: new Date().toISOString(),
-      request_id: randomUUID(),
+      request_id: rid,
     });
-    if (error) throw error;
+    // Idempotência: mesmo request_id do cliente → sucesso sem duplicar.
+    if (insertErr && insertErr.code !== '23505') throw insertErr;
     return this.getWater(id);
   },
 
   async listAlimentos() {
     const { data, error } = await db()
       .from('health_alimentos')
-      .select('*')
+      .select('id, source_order, categoria, item, porcao_equivalente, peso_referencia_g, kcal_100g, proteina_100g, carboidrato_100g, gordura_100g, observacoes, fonte_nutricional')
       .order('source_order', { ascending: true });
     if (error) throw error;
     return (data || []).map((food) => ({

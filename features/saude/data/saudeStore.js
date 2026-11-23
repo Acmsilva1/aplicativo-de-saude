@@ -30,6 +30,7 @@ export const saudeStore = {
   setDietVisibility: (...args) => call('setDietVisibility', ...args),
   deleteDiet: (...args) => call('deleteDiet', ...args),
   getWater: (...args) => call('getWater', ...args),
+  peekWaterGoal: (...args) => call('peekWaterGoal', ...args),
   setWaterGoal: (...args) => call('setWaterGoal', ...args),
   deleteWaterGoal: (...args) => call('deleteWaterGoal', ...args),
   addWater: (...args) => call('addWater', ...args),

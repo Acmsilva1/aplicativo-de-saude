@@ -154,7 +154,7 @@ function renderDietStartModal(templates = []) {
       return `<button type="button" class="saude-choice-card" data-diet-start-choice="${esc(tid)}"><span class="saude-choice-emoji" aria-hidden="true">${template.semanal ? '📅' : '🍽️'}</span><strong>${esc(template.titulo || template.title || 'Modelo')}</strong><span>${esc(template.semanal ? 'Modelo semanal' : 'Modelo fixo')}${template.objetivo ? ` · ${esc(template.objetivo)}` : ''}</span></button>`;
     }),
   ].join('');
-  return `<div class="saude-modal-backdrop"><section class="saude-diet-modal saude-diet-start-modal" role="dialog" aria-modal="true" aria-labelledby="diet-start-title">
+  return `<div class="saude-modal-backdrop" data-preserve-ui="diet-start"><section class="saude-diet-modal saude-diet-start-modal" role="dialog" aria-modal="true" aria-labelledby="diet-start-title">
     <header class="saude-diet-modal__header"><div><h2 id="diet-start-title">➕ Nova dieta</h2><p>Escolha como começar o plano do aluno.</p></div><button class="saude-icon-btn" type="button" data-action="cancel-editor" aria-label="Fechar">×</button></header>
     <div class="saude-choice-field"><span class="saude-choice-label">📚 Começar com modelo</span><div class="saude-diet-type-options" role="group" aria-label="Começar com modelo">${cards}</div><small>Escolher um modelo copia o conteúdo para esta nova dieta.</small></div>
     <div class="saude-editor__actions"><button type="button" class="saude-btn" data-action="cancel-editor">Cancelar</button></div>

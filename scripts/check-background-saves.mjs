@@ -36,7 +36,16 @@ assert.equal(saves.pending, 0);
 const edit = deferred(), toggle = deferred();
 const state = { selectedUserId: 'u', diets: [{ id: 'd', titulo: 'Original', visible_to_student: false }], module: 'diets' };
 let calls = 0;
-const context = vm.createContext({ state, structuredClone, crypto, mutate: () => ++calls === 1 ? edit.promise : toggle.promise, saved() {}, failed() {}, saves: createBackgroundSaves() });
+const context = vm.createContext({
+  state,
+  structuredClone,
+  crypto,
+  mutate: () => ++calls === 1 ? edit.promise : toggle.promise,
+  saved() {},
+  failed() {},
+  clearDietCacheForUser() {},
+  saves: createBackgroundSaves(),
+});
 vm.runInContext(source.slice(source.indexOf('function savePlan('), source.indexOf('\nfunction saveWater(')), context);
 context.savePlan({ id: 'd', user_id: 'u', titulo: 'Não salvo' });
 context.savePlan({ id: 'd', user_id: 'u', action: 'visibility', visible_to_student: true }, { visibility: true });
@@ -50,11 +59,16 @@ assert.equal(state.diets[0].visible_to_student, true);
 // Entering hydration does not download the food catalog or diet portfolio.
 const urls = [];
 const navigationState = { user: { role: 'professor' }, module: 'home', selectedUserId: 'u', profilesLoaded: true, profiles: [{ id: 'u' }], templates: [], foods: [], diets: [] };
-const navigation = vm.createContext({ state: navigationState, saves: createBackgroundSaves(), request: async url => {
-  urls.push(url);
-  if (url.includes('professor-agua')) return { user: { id: 'u' }, water: {} };
-  throw Error(`Unexpected eager request: ${url}`);
-} });
+const navigation = vm.createContext({
+  state: navigationState,
+  saves: createBackgroundSaves(),
+  flushWaterBuffer: async () => {},
+  request: async url => {
+    urls.push(url);
+    if (url.includes('professor-agua')) return { user: { id: 'u' }, water: {} };
+    throw Error(`Unexpected eager request: ${url}`);
+  },
+});
 vm.runInContext(source.slice(source.indexOf('async function load('), source.indexOf('\nasync function navigate(')), navigation);
 await navigation.load('monitor', 'u');
 assert.equal(urls.length, 1);

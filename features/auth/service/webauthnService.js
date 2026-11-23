@@ -217,6 +217,7 @@ export async function verifyWebAuthnLogin(req, res, body = {}) {
   const newCounter = verification.authenticationInfo?.newCounter;
   if (typeof newCounter === 'number') await updateCounter(credentialId, newCounter);
 
+  // createSession* só grava cookie se a senha já foi definida.
   const account = useMockData()
     ? mock.createDemoSessionForUserId(req, res, stored.user_id)
     : await real.createSessionForUserId(req, res, stored.user_id);

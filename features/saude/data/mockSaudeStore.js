@@ -42,9 +42,10 @@ export const mockSaudeStore = {
   if(index>=0)d.diets[index]=diet;else d.diets.push(diet);return structuredClone(diet);
  },
  deleteDiet(id,dietId){const d=dataFor(id);const index=d.diets.findIndex(x=>x.id===dietId);if(index<0)return false;d.diets.splice(index,1);return true;},
- getWater(id){const d=dataFor(id);const date=todayDietDate();const entries=d.entries.filter(x=>x.date===date);return {goal_ml:d.goal,nome:d.goalName,checkins:structuredClone(entries),total_ml:entries.reduce((s,x)=>s+x.amount_ml,0),date,history:[...new Set(d.entries.map(x=>x.date))].filter(x=>x!==date).map(day=>({date:day,total_ml:d.entries.filter(x=>x.date===day).reduce((s,x)=>s+x.amount_ml,0)}))};},
+ peekWaterGoal(id){return dataFor(id).goal ?? null;},
+ getWater(id){const d=dataFor(id);const date=todayDietDate();const entries=d.entries.filter(x=>x.date===date);const historyDates=[...new Set(d.entries.map(x=>x.date))].filter(x=>x!==date).sort((a,b)=>a<b?1:-1).slice(0,30);return {goal_ml:d.goal,nome:d.goalName,checkins:structuredClone(entries),total_ml:entries.reduce((s,x)=>s+x.amount_ml,0),date,history:historyDates.map(day=>({date:day,total_ml:d.entries.filter(x=>x.date===day).reduce((s,x)=>s+x.amount_ml,0)}))};},
  setWaterGoal(id,goal,name){const d=dataFor(id);d.goal=goal;d.goalName=String(name||d.goalName||'Hidratação diária').slice(0,80);return this.getWater(id);},
  deleteWaterGoal(id){const d=dataFor(id);d.goal=null;return this.getWater(id);},
  listAlimentos(){return structuredClone(ALIMENTOS_NUTRICIONAIS.map(food=>({...food,id:food.id??food.source_order})));},
- addWater(id,amount){const d=dataFor(id);d.entries.push({id:randomUUID(),amount_ml:amount,date:todayDietDate(),time:new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date())});return this.getWater(id);}
+ addWater(id,amount,requestId){const d=dataFor(id);const rid=String(requestId||'').trim();if(rid&&d.entries.some(x=>x.request_id===rid))return this.getWater(id);d.entries.push({id:randomUUID(),request_id:rid||randomUUID(),amount_ml:amount,date:todayDietDate(),time:new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date())});return this.getWater(id);}
 };

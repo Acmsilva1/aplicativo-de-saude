@@ -102,7 +102,7 @@ export function renderLogin(container, {
     loginForm.setAttribute('aria-busy', 'true');
     try {
       await onLogin?.({
-        email: email.value,
+        email: email.value.trim(),
         password: password.value,
         enableBiometric,
       });
