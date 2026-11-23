@@ -17,15 +17,33 @@ import {
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
 let forcePasswordLogin=false;
+const INVITE_TOKENS_KEY='ritmo_invite_tokens';
+function storeInviteTokens(tokens){
+ try{sessionStorage.setItem(INVITE_TOKENS_KEY,JSON.stringify(tokens));}catch{/* private mode */}
+}
+function loadInviteTokens(){
+ try{
+  const raw=sessionStorage.getItem(INVITE_TOKENS_KEY);
+  if(!raw)return null;
+  const parsed=JSON.parse(raw);
+  return parsed?.access_token?parsed:null;
+ }catch{return null;}
+}
+function clearInviteTokens(){
+ try{sessionStorage.removeItem(INVITE_TOKENS_KEY);}catch{/* ignore */}
+}
 function readAuthRedirect(){
  const hash=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
  const query=new URLSearchParams(location.search);
  const get=key=>hash.get(key)||query.get(key);
  const access_token=get('access_token');
  const type=String(get('type')||'');
- if(!access_token)return null;
- if(!['invite','recovery','signup','magiclink'].includes(type)&&!get('refresh_token'))return null;
- return{access_token,refresh_token:get('refresh_token')||'',type:type||'invite'};
+ if(access_token&&(['invite','recovery','signup','magiclink'].includes(type)||get('refresh_token'))){
+  const tokens={access_token,refresh_token:get('refresh_token')||'',type:type||'invite'};
+  storeInviteTokens(tokens);
+  return tokens;
+ }
+ return loadInviteTokens();
 }
 function clearAuthRedirect(){
  if(location.hash||/(access_token|type=|refresh_token)/.test(location.search))history.replaceState({},'',location.pathname);
@@ -169,9 +187,10 @@ function biometricAuth(error=''){
  }});
 }
 function invitePassword(tokens,error=''){
- renderInvitePassword(app,{error,onCancel:()=>{clearAuthRedirect();auth();},onSubmit:async password=>{
+ renderInvitePassword(app,{error,onCancel:()=>{clearAuthRedirect();clearInviteTokens();auth();},onSubmit:async password=>{
   state.user=(await request('/api/auth?resource=complete-invite',{method:'POST',body:JSON.stringify({...tokens,password})})).user;
   clearAuthRedirect();
+  clearInviteTokens();
   await enter();
  }});
 }

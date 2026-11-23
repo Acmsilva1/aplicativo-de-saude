@@ -221,29 +221,43 @@ export async function completeInvite(req, res, { access_token, refresh_token, pa
   const next = String(password || '');
   if (!access || !isStrongPassword(next)) return { error: 'Escolha uma senha forte e use o link do e-mail.' };
 
-  const client = createUserClient(access);
-  const { data: userData, error: userErr } = await client.auth.getUser(access);
-  if (userErr || !userData?.user) return { error: 'Link inválido ou expirado. Peça um novo convite ao administrador.' };
-
-  const { error: updateErr } = await client.auth.updateUser({ password: next });
-  if (updateErr) return { error: updateErr.message || 'Não foi possível salvar a senha.' };
+  // Valida o JWT do link (invite/recovery) sem depender de cookie de sessão do browser.
+  const { data: userData, error: userErr } = await createUserClient().auth.getUser(access);
+  if (userErr || !userData?.user?.id) {
+    return { error: 'Link inválido ou expirado. Peça um novo convite ao administrador.' };
+  }
 
   const admin = getSupabaseAdmin();
+  // updateUser do client exige sessão interna; no servidor usamos a Admin API com o user_id do JWT.
+  const { error: updateErr } = await admin.auth.admin.updateUserById(userData.user.id, {
+    password: next,
+    email_confirm: true,
+  });
+  if (updateErr) return { error: updateErr.message || 'Não foi possível salvar a senha.' };
+
   await admin.from('health_user_roles').update({ must_change_password: false }).eq('user_id', userData.user.id);
 
-  const session = {
-    access_token: access,
-    refresh_token: refresh || undefined,
-    expires_at: null,
-  };
-  const { data: refreshed } = refresh
-    ? await createUserClient().auth.refreshSession({ refresh_token: refresh })
-    : { data: null };
-  if (refreshed?.session) {
-    setSessionCookie(req, res, refreshed.session);
-  } else {
-    setSessionCookie(req, res, session);
+  const email = String(userData.user.email || '').trim();
+  let session = null;
+  if (email) {
+    const { data: signedIn, error: signErr } = await createUserClient().auth.signInWithPassword({
+      email,
+      password: next,
+    });
+    if (!signErr && signedIn?.session) session = signedIn.session;
   }
+  if (!session && refresh) {
+    const { data: refreshed } = await createUserClient().auth.refreshSession({ refresh_token: refresh });
+    if (refreshed?.session) session = refreshed.session;
+  }
+  if (!session) {
+    session = {
+      access_token: access,
+      refresh_token: refresh || undefined,
+      expires_at: null,
+    };
+  }
+  setSessionCookie(req, res, session);
 
   const account = await loadAccount(userData.user.id);
   if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
