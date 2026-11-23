@@ -610,18 +610,19 @@ export async function setAccountAccess(id, access) {
 
 export async function deleteAccount(id) {
   const current = await loadAccount(id, { includeDisabled: true });
-  if (!current || current.role === 'admin') return false;
+  if (!current || current.role === 'admin') return { ok: false };
   const admin = getSupabaseAdmin();
+  let unlinkedStudents = 0;
   if (current.role === 'professor') {
-    const { data: students, error } = await admin
+    // Unlink students first so FK/professor refs do not block deletion.
+    const { data: unlinked, error: unlinkErr } = await admin
       .from('health_user_roles')
-      .select('user_id')
+      .update({ professor_id: null })
       .eq('role', 'student')
       .eq('professor_id', id)
-      .limit(1);
-    // Reassign active and blocked students before deleting their professor.
-    // This check must precede every destructive operation below.
-    if (error || students?.length) return false;
+      .select('user_id');
+    if (unlinkErr) return { ok: false };
+    unlinkedStudents = unlinked?.length || 0;
   }
   await admin.from('health_diet_templates').delete().eq('professor_id', id);
   await admin.from('health_water_entries').delete().eq('user_id', id);
@@ -632,5 +633,5 @@ export async function deleteAccount(id) {
   await admin.from('health_user_roles').delete().eq('user_id', id);
   await admin.from('health_user_profiles').delete().eq('user_id', id);
   const { error } = await admin.auth.admin.deleteUser(id);
-  return !error;
+  return error ? { ok: false } : { ok: true, unlinkedStudents };
 }

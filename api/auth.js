@@ -170,9 +170,10 @@ export default async function handler(req, res) {
       if (id && id === String(user.id || '')) {
         return res.status(400).json({ error: 'Você não pode excluir a própria conta.' });
       }
-      if (!(await deleteAccount(id))) return res.status(400).json({ error: 'Conta indisponível ou protegida.' });
+      const deleted = await deleteAccount(id);
+      if (!deleted?.ok) return res.status(400).json({ error: 'Conta indisponível ou protegida.' });
       await saudeStore.deleteUserData(id);
-      return res.json({ ok: true });
+      return res.json({ ok: true, unlinkedStudents: deleted.unlinkedStudents || 0 });
     }
     if (resource === 'account-access' && req.method === 'PATCH') {
       if (typeof req.body?.access !== 'boolean') return res.status(400).json({ error: 'Permissão inválida.' });

@@ -490,7 +490,11 @@ function renderAccounts(accounts = [], currentUser = null) {
     const active = account.access !== false && account.enabled !== false && account.active !== false;
     const role = account.role === 'student' ? 'Aluno' : account.role === 'professor' ? 'Professor' : 'Administração';
     const mustChange = account.must_change_password || account.mustChangePassword;
-    const professorLink = account.role === 'student' && account.professor_name ? ` · Professor: ${account.professor_name}` : account.role === 'student' ? ' · Sem professor vinculado' : '';
+    const missingProfessor = account.role === 'student' && !account.professor_id;
+    const professorLink = account.role === 'student' && account.professor_name ? ` · Professor: ${account.professor_name}` : '';
+    const missingProfessorBadge = missingProfessor
+      ? '<span class="saude-inline-tag is-warning saude-account-alert" role="status">Sem professor — atribua um novo, senão o aluno fica sem acompanhamento.</span>'
+      : '';
     const manageActions = canManageAccess
       ? `<button class="saude-row-action is-danger" type="button" data-delete-account data-id="${esc(id)}">Excluir</button><button class="saude-row-action ${active ? 'is-danger' : 'is-primary'}" type="button" data-admin-access data-id="${esc(id)}" data-enabled="${active}">${active ? 'Pausar acesso' : 'Liberar acesso'}</button>`
       : (isSelf ? '<span class="saude-inline-tag">Sua conta</span>' : '');
@@ -500,7 +504,7 @@ function renderAccounts(accounts = [], currentUser = null) {
       : (!mustChange && active && !isAdminAccount
         ? `<button class="saude-row-action" type="button" data-regenerate-password data-id="${esc(id)}" title="${esc(resendLabel)}">${esc(resendLabel)}</button>`
         : '');
-    return `<li class="saude-student-row"><div class="saude-student-row__identity"><span class="saude-avatar" aria-hidden="true">${esc(String(account.name || account.nome || '?').slice(0, 1).toUpperCase())}</span><span><strong>${esc(account.name || account.nome || 'Conta')}</strong><small>${esc(account.email || '')}</small></span></div><div class="saude-student-row__summary"><span>${esc(role)}</span><small>${active ? 'Acesso ativo' : 'Acesso pausado'}${mustChange ? ' · Aguardando definição de senha' : ''}${esc(professorLink)}</small></div><div class="saude-student-row__actions">${resendAction}<button class="saude-row-action" type="button" data-edit-account data-id="${esc(id)}">Editar</button>${manageActions}</div></li>`;
+    return `<li class="saude-student-row"><div class="saude-student-row__identity"><span class="saude-avatar" aria-hidden="true">${esc(String(account.name || account.nome || '?').slice(0, 1).toUpperCase())}</span><span><strong>${esc(account.name || account.nome || 'Conta')}</strong><small>${esc(account.email || '')}</small></span></div><div class="saude-student-row__summary"><span>${esc(role)}</span><small>${active ? 'Acesso ativo' : 'Acesso pausado'}${mustChange ? ' · Aguardando definição de senha' : ''}${esc(professorLink)}</small>${missingProfessorBadge}</div><div class="saude-student-row__actions">${resendAction}<button class="saude-row-action" type="button" data-edit-account data-id="${esc(id)}">Editar</button>${manageActions}</div></li>`;
   }).join('');
   return `<section class="module-page"><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>Contas</h1><p>Cadastre professores e alunos e controle o acesso à plataforma.</p></div><button type="button" class="button button--primary" data-module="createAccount">Nova conta</button></header><p class="fin-section-label">Contas cadastradas · ${accounts.length}</p><ul class="fin-list saude-student-list">${rows || '<li class="saude-empty-row">Nenhuma conta cadastrada.</li>'}</ul></section>`;
 }

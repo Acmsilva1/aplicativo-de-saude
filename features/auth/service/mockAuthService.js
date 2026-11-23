@@ -297,7 +297,16 @@ export function updateDemoAccount(id, { name, email, role, professor_id, phone, 
 
 export function deleteDemoAccount(id) {
   const index = accounts.findIndex((x) => x.id === id);
-  if (index < 0 || accounts[index].role === 'admin') return false;
+  if (index < 0 || accounts[index].role === 'admin') return { ok: false };
+  let unlinkedStudents = 0;
+  if (accounts[index].role === 'professor') {
+    for (const account of accounts) {
+      if (account.role === 'student' && account.professor_id === id) {
+        account.professor_id = null;
+        unlinkedStudents += 1;
+      }
+    }
+  }
   for (const [token, accountId] of inviteTokens) {
     if (accountId === id) inviteTokens.delete(token);
   }
@@ -306,7 +315,7 @@ export function deleteDemoAccount(id) {
   }
   accounts.splice(index, 1);
   for (const [key, value] of sessions) if (value === id) sessions.delete(key);
-  return true;
+  return { ok: true, unlinkedStudents };
 }
 
 export function changeDemoPassword(req, res, password) {

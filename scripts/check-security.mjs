@@ -31,7 +31,18 @@ const store = new Proxy({}, { get: (_target, key) => async (...args) => {
   if (key === 'getProfessorDietSummaries' || key === 'getProfessorWater') return null;
   return [];
 } });
-const api = vm.createContext({ console, getUser: async () => actor, isMockAuthEnabled: () => false, hasSupabaseConfig: () => true, store, validWaterAmount: () => true, validWaterGoal: () => true });
+const api = vm.createContext({
+  console,
+  getUser: async () => actor,
+  isMockAuthEnabled: () => false,
+  hasSupabaseConfig: () => true,
+  store,
+  validWaterAmount: () => true,
+  validWaterGoal: () => true,
+  isTrialBlocked: () => false,
+  TRIAL_EXPIRED_CODE: 'trial_expired',
+  TRIAL_EXPIRED_MESSAGE: 'Período de teste encerrado.',
+});
 vm.runInContext(apiSource, api, { filename: fileURLToPath(new URL('api/saude.js', root)) });
 const run = async (user, resource, method = 'GET', query = {}, body = {}) => {
   actor = user; calls = [];
@@ -69,7 +80,14 @@ const db = {
   },
   auth: { getUser: async () => ({ data: { user: { id: 'student-a' } } }), admin: { signOut: async (token, scope) => { signouts.push([token, scope]); return { error: null }; } } },
 };
-const auth = vm.createContext({ Buffer, getSupabaseAdmin: () => db, createUserClient: () => ({}), readCookie: () => Buffer.from(JSON.stringify({ access_token: 'test-jwt', expires_at: Date.now() / 1000 + 3600 })).toString('base64url'), sessionCookieOptions: () => ({ secure: true }) });
+const auth = vm.createContext({
+  Buffer,
+  getSupabaseAdmin: () => db,
+  createUserClient: () => ({}),
+  readCookie: () => Buffer.from(JSON.stringify({ access_token: 'test-jwt', expires_at: Date.now() / 1000 + 3600 })).toString('base64url'),
+  sessionCookieOptions: () => ({ secure: true }),
+  buildTrialFields: () => ({}),
+});
 vm.runInContext(authSource, auth);
 assert.equal((await auth.setAccountAccess('student-a', false)).access, false);
 assert.equal(await auth.getUser({}, {}), null);
@@ -80,22 +98,62 @@ assert.equal(cleared, true);
 assert.deepEqual(signouts, [['test-jwt', 'local']]);
 console.log('PASS account block/unblock, disabled authentication denied, scoped logout invocation');
 
-// A professor with any linked student must be rejected before the first delete.
+// A professor with linked students must unlink them before any destructive delete.
 let destructiveCalls = 0;
+let unlinked = false;
 const linkedDb = {
-  from(table) { return {
-    select() { return this; }, eq() { return this; },
-    async maybeSingle() { return { data: table === 'health_user_roles' ? { user_id: 'prof-a', role: 'professor', access_enabled: true, must_change_password: false } : { nome: 'Professor', email: 'professor@example.invalid' }, error: null }; },
-    async limit() { return { data: [{ user_id: 'blocked-or-active-student' }], error: null }; },
-    delete() { destructiveCalls++; throw Error('Destructive operation must not run'); },
-  }; },
-  auth: { admin: { async deleteUser() { destructiveCalls++; throw Error('Auth delete must not run'); } } },
+  from(table) {
+    const api = {
+      select() { return api; },
+      eq() { return api; },
+      update(payload) {
+        if (Object.prototype.hasOwnProperty.call(payload || {}, 'professor_id') && payload.professor_id === null) {
+          unlinked = true;
+        }
+        return api;
+      },
+      async maybeSingle() {
+        return {
+          data: table === 'health_user_roles'
+            ? { user_id: 'prof-a', role: 'professor', access_enabled: true, must_change_password: false }
+            : { nome: 'Professor', email: 'professor@example.invalid' },
+          error: null,
+        };
+      },
+      then(resolve) {
+        resolve({ data: unlinked ? [{ user_id: 'student-1' }] : [], error: null });
+      },
+      delete() {
+        if (!unlinked) {
+          destructiveCalls += 1;
+          throw Error('Destructive operation must not run before unlink');
+        }
+        destructiveCalls += 1;
+        return api;
+      },
+    };
+    return api;
+  },
+  auth: {
+    admin: {
+      async deleteUser() {
+        if (!unlinked) {
+          destructiveCalls += 1;
+          throw Error('Auth delete must not run before unlink');
+        }
+        return { error: null };
+      },
+    },
+  },
 };
-const deletionAuth = vm.createContext({ Buffer, getSupabaseAdmin: () => linkedDb });
+const deletionAuth = vm.createContext({ Buffer, getSupabaseAdmin: () => linkedDb, buildTrialFields: () => ({}) });
 vm.runInContext(authSource, deletionAuth);
-assert.equal(await deletionAuth.deleteAccount('prof-a'), false);
-assert.equal(destructiveCalls, 0);
-console.log('PASS deleting professor with linked students is refused before any health/profile/auth data removal');
+const deletion = await deletionAuth.deleteAccount('prof-a');
+assert.equal(deletion.ok, true);
+assert.equal(deletion.unlinkedStudents, 1);
+assert.equal(unlinked, true);
+assert.ok(destructiveCalls > 0);
+console.log('PASS deleting professor unlinks students then removes health/profile/auth data');
 console.log('All local security regressions passed. Run pilot database fixtures separately to validate effective RLS.');
 // A failed goal DELETE must reach the API error handler, never report success.
 const storeSource = fs.readFileSync(new URL('../features/saude/data/supabaseSaudeStore.js', import.meta.url), 'utf8');

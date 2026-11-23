@@ -355,12 +355,12 @@ async function action(work,module='users',targetId='',successNotice='Tudo certo!
  beginLoading('Salvando','Aguarde um instante…');
  render();
  try{
-  await work();
+  const result=await work();
   if(module==='accounts')state.accountsLoaded=false;
   if(module==='portfolio')state.templatesLoaded=false;
   if(['diets','monitor'].includes(module))state.profilesLoaded=false;
   await load(module,targetId);
-  state.notice={text:successNotice,type:'success'};
+  state.notice={text:typeof successNotice==='function'?successNotice(result):successNotice,type:'success'};
  }catch(e){state.notice={text:e.message,type:'error'};}
  finally{endLoading();render();}
 }
@@ -413,7 +413,7 @@ function render(){if(state.user)syncTrialLocalFlags(state.user);if(!state.user)r
  onRegeneratePassword:resendPasswordLink,
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),
  onEditAccount:payload=>action(async()=>{const result=await request('/api/auth?resource=accounts',{method:'PATCH',body:JSON.stringify(payload)});if(result.account.id===state.user.id)state.user=result.account;},'accounts','','Conta atualizada.'),
- onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','','Conta excluída.'),
+ onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','',(result)=>result?.unlinkedStudents?`Conta excluída. Alunos ficaram sem professor; reatribua nas contas.`:'Conta excluída.'),
  onSaveTemplate:payload=>savePlan(payload,{template:true}),
  onDeleteTemplate:id=>savePlan({id},{template:true,remove:true}),
  onUseTemplate:async id=>{const template=state.templates.find(entry=>entry.id===id);if(!template||state.loading||String(id).startsWith('pending-'))return;const draft=structuredClone(template);delete draft.id;await navigate('createDiet','',()=>{state.dietDraft=draft;state.dietSourceSelected=true;});},
