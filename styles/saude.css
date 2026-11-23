@@ -201,8 +201,37 @@ a {
 .login-card {
   width: min(100%,410px);
 }
+.login-header {
+  display: grid;
+  gap: 10px;
+}
 .mobile-brand {
   display: none;
+}
+.mobile-brand-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.mobile-brand-name {
+  letter-spacing: -.7px;
+  font-family: Manrope,sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.login-eyebrow--desktop {
+  display: inline-flex;
+}
+.login-access-card {
+  background: #fff;
+  border: 1px solid #e4ebe4;
+  border-radius: 18px;
+  padding: 18px 16px 16px;
+  box-shadow: 0 10px 28px #1a3a2d0c;
+}
+.login-access-card .login-form>label:first-child {
+  margin-top: 0;
 }
 .login-card h2 {
   letter-spacing: -1.3px;
@@ -212,7 +241,7 @@ a {
 }
 .login-subtitle {
   color: #718077;
-  margin: 0 0 29px;
+  margin: 0 0 22px;
   font-size: 14px;
 }
 .login-form {
@@ -1242,16 +1271,36 @@ a {
   }
   .mobile-brand {
     color: var(--forest);
+    align-items: center;
+    gap: 12px;
     display: inline-flex;
   }
-  .login-card>.mobile-brand {
-    margin-bottom: 50px;
+  .login-header {
+    margin-bottom: 28px;
+  }
+  .login-eyebrow--desktop {
+    display: none;
+  }
+  .mobile-brand .login-eyebrow {
+    color: #67904d;
+    letter-spacing: 1.1px;
+    font-size: 10px;
+  }
+  .mobile-brand .brand-mark {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 14px;
   }
   .mobile-brand .brand-light {
     color: #67904d;
   }
   .login-card h2 {
+    margin-top: 0;
     font-size: 29px;
+  }
+  .login-access-card {
+    padding: 18px 15px 16px;
   }
   .app-shell {
     flex-direction: column;
@@ -2396,6 +2445,11 @@ body {
 .login-eyebrow {
   color: #ff7474;
 }
+.login-access-card {
+  background: #0c1a31;
+  border: 1px solid #2a3c56;
+  box-shadow: 0 14px 34px #0000004d;
+}
 .button--primary {
   color: #fff;
   background: #d00000;
@@ -2434,7 +2488,15 @@ body {
   .login-panel {
     background: #081328;
   }
+  .mobile-brand .brand-mark {
+    color: #c6de6d;
+    background: #c6de6d1a;
+    border-color: #c6de6d47;
+  }
   .mobile-brand .brand-light {
+    color: #ff7474;
+  }
+  .mobile-brand .login-eyebrow {
     color: #ff7474;
   }
 }
