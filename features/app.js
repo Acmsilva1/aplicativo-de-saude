@@ -269,11 +269,13 @@ async function resendPasswordLink(id){
  try{
   const result=await request('/api/auth?resource=account-password-link',{method:'POST',body:JSON.stringify({id})});
   state.accounts=state.accounts.map(account=>account.id===id?result.account:account);
-  if(result.inviteLink){
-   const copied=await copyInviteLink(result.inviteLink);
-   state.notice={text:copied?'E-mail SMTP falhou. Link de senha copiado — envie manualmente à pessoa.':'E-mail SMTP falhou. Copie o link de senha retornado e envie manualmente.',type:'success'};
-  }else{
+  if(result.inviteSent){
    state.notice={text:'Link de senha enviado para o e-mail da conta.',type:'success'};
+  }else if(result.inviteLink){
+   const copied=await copyInviteLink(result.inviteLink);
+   state.notice={text:copied?'E-mail automático falhou. Link de senha copiado — envie manualmente à pessoa.':'E-mail automático falhou. Copie o link de senha retornado e envie manualmente.',type:'success'};
+  }else{
+   state.notice={text:result.warning||'Não foi possível enviar o link de senha.',type:'error'};
   }
  }catch(error){state.notice={text:error.message,type:'error'};}
  finally{state.loading=false;render();}
@@ -283,11 +285,13 @@ async function createAccount(payload){
   const result=await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
   state.accountsLoaded=false;
   await load('accounts');
-  if(result.inviteLink){
-   const copied=await copyInviteLink(result.inviteLink);
-   state.notice={text:copied?'Conta criada, mas o e-mail SMTP falhou. Link de convite copiado — envie manualmente à pessoa.':'Conta criada, mas o e-mail SMTP falhou. Use o link de convite retornado para enviar manualmente.',type:'success'};
-  }else{
+  if(result.inviteSent){
    state.notice={text:'Convite enviado para o e-mail. A pessoa define a senha pelo link recebido.',type:'success'};
+  }else if(result.inviteLink){
+   const copied=await copyInviteLink(result.inviteLink);
+   state.notice={text:copied?'Conta criada, mas o e-mail automático falhou. Link de convite copiado — envie manualmente à pessoa.':'Conta criada, mas o e-mail automático falhou. Use o link de convite retornado para enviar manualmente.',type:'success'};
+  }else{
+   state.notice={text:result.warning||'Conta criada, mas o convite não foi enviado.',type:'error'};
   }
   render();
  }catch(error){

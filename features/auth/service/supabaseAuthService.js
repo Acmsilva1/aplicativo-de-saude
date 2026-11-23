@@ -2,6 +2,7 @@ import { getSupabaseAdmin, createUserClient, getSupabaseAnon } from '../../../li
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
 import { normalizeBrazilPhone } from '../../../lib/phone.js';
 import { isStrongPassword } from '../../../lib/passwordPolicy.js';
+import { sendAuthLinkEmail } from '../../../lib/mailer.js';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
@@ -343,11 +344,14 @@ export async function createAccount(payload = {}, req = null) {
   let userId = null;
   let inviteSent = false;
   let inviteLink = null;
+  let linkKind = 'invite';
+  let inviteErr = null;
 
-  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(e, {
+  const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(e, {
     data: { name: n, role },
     redirectTo,
   });
+  inviteErr = inviteError;
   if (!inviteErr && invited?.user) {
     userId = invited.user.id;
     inviteSent = true;
@@ -369,13 +373,13 @@ export async function createAccount(payload = {}, req = null) {
         email: e,
         options: { redirectTo },
       }));
+      linkKind = 'recovery';
     }
     if (!userId && linked?.user?.id) userId = linked.user.id;
     inviteLink = linked?.properties?.action_link || null;
     if (!userId || !inviteLink) {
       return { error: mapAuthEmailError(inviteErr || linkErr, 'Não foi possível criar o convite.') };
     }
-    inviteSent = false;
   }
 
   const { error: profileErr } = await admin.from('health_user_profiles').insert({
@@ -400,6 +404,14 @@ export async function createAccount(payload = {}, req = null) {
     await admin.from('health_user_profiles').delete().eq('user_id', userId);
     await admin.auth.admin.deleteUser(userId);
     return { error: roleErr.message || 'Falha ao salvar o papel.' };
+  }
+
+  if (!inviteSent && inviteLink) {
+    const mailed = await sendAuthLinkEmail({ to: e, link: inviteLink, kind: linkKind, name: n });
+    if (mailed.ok) {
+      inviteSent = true;
+      inviteLink = null;
+    }
   }
 
   const account = await loadAccount(userId);
@@ -434,9 +446,18 @@ export async function sendPasswordSetupEmail(id, req = null) {
       email: account.email,
       options: { redirectTo },
     });
-    const inviteLink = linked?.properties?.action_link || null;
+    let inviteLink = linked?.properties?.action_link || null;
     if (linkErr || !inviteLink) {
       return { error: mapAuthEmailError(error || linkErr, 'Não foi possível enviar o e-mail de definição de senha.') };
+    }
+    const mailed = await sendAuthLinkEmail({
+      to: account.email,
+      link: inviteLink,
+      kind: 'recovery',
+      name: account.name || '',
+    });
+    if (mailed.ok) {
+      return { account: { ...account, must_change_password: true }, inviteSent: true };
     }
     return {
       account: { ...account, must_change_password: true },
