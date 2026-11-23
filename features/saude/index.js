@@ -3,6 +3,7 @@ import { WATER_AMOUNTS_ML, waterAmountLabel } from './service/waterIntakeService
 import { DIET_MEALS, DIET_WEEK, dietDayIndex, dietForDate, todayDietDate } from './service/dietasService.js';
 import { DIET_NUTRITION_STYLES, renderDietFoodDetails, renderDietNutritionTotal } from './dietNutritionView.js';
 import { renderWaterDropHtml, WATER_DROP_STYLES } from './waterDropVisual.js';
+import { formatBrazilPhone } from '../../lib/phone.js';
 
 const esc = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 const profileId = (profile) => String(profile?.id ?? profile?.user_id ?? '');
@@ -493,7 +494,13 @@ function renderAccounts(accounts = [], currentUser = null) {
     const manageActions = canManageAccess
       ? `<button class="saude-row-action is-danger" type="button" data-delete-account data-id="${esc(id)}">Excluir</button><button class="saude-row-action ${active ? 'is-danger' : 'is-primary'}" type="button" data-admin-access data-id="${esc(id)}" data-enabled="${active}">${active ? 'Pausar acesso' : 'Liberar acesso'}</button>`
       : (isSelf ? '<span class="saude-inline-tag">Sua conta</span>' : '');
-    return `<li class="saude-student-row"><div class="saude-student-row__identity"><span class="saude-avatar" aria-hidden="true">${esc(String(account.name || account.nome || '?').slice(0, 1).toUpperCase())}</span><span><strong>${esc(account.name || account.nome || 'Conta')}</strong><small>${esc(account.email || '')}</small></span></div><div class="saude-student-row__summary"><span>${esc(role)}</span><small>${active ? 'Acesso ativo' : 'Acesso pausado'}${mustChange ? ' · Senha inicial pendente de troca' : ''}${esc(professorLink)}</small></div><div class="saude-student-row__actions">${mustChange && active && !isAdminAccount ? `<button class="saude-row-action" type="button" data-regenerate-password data-id="${esc(id)}" title="Gerar e copiar nova senha temporária" aria-label="Gerar e copiar nova senha temporária de ${esc(account.name || account.nome || 'usuário')}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}${!mustChange && active && !isAdminAccount ? `<button class="saude-row-action" type="button" data-regenerate-password data-id="${esc(id)}" title="Resetar senha para provisória">🔑 Resetar senha</button>` : ''}<button class="saude-row-action" type="button" data-edit-account data-id="${esc(id)}">Editar</button>${manageActions}</div></li>`;
+    const resendLabel = mustChange ? 'Reenviar convite' : 'Enviar link de nova senha';
+    const resendAction = mustChange && active && !isAdminAccount
+      ? `<button class="saude-row-action" type="button" data-regenerate-password data-id="${esc(id)}" title="${esc(resendLabel)}" aria-label="${esc(resendLabel)} de ${esc(account.name || account.nome || 'usuário')}">${esc(resendLabel)}</button>`
+      : (!mustChange && active && !isAdminAccount
+        ? `<button class="saude-row-action" type="button" data-regenerate-password data-id="${esc(id)}" title="${esc(resendLabel)}">${esc(resendLabel)}</button>`
+        : '');
+    return `<li class="saude-student-row"><div class="saude-student-row__identity"><span class="saude-avatar" aria-hidden="true">${esc(String(account.name || account.nome || '?').slice(0, 1).toUpperCase())}</span><span><strong>${esc(account.name || account.nome || 'Conta')}</strong><small>${esc(account.email || '')}</small></span></div><div class="saude-student-row__summary"><span>${esc(role)}</span><small>${active ? 'Acesso ativo' : 'Acesso pausado'}${mustChange ? ' · Aguardando definição de senha' : ''}${esc(professorLink)}</small></div><div class="saude-student-row__actions">${resendAction}<button class="saude-row-action" type="button" data-edit-account data-id="${esc(id)}">Editar</button>${manageActions}</div></li>`;
   }).join('');
   return `<section class="module-page"><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>Contas</h1><p>Cadastre professores e alunos e controle o acesso à plataforma.</p></div><button type="button" class="button button--primary" data-module="createAccount">Nova conta</button></header><p class="fin-section-label">Contas cadastradas · ${accounts.length}</p><ul class="fin-list saude-student-list">${rows || '<li class="saude-empty-row">Nenhuma conta cadastrada.</li>'}</ul></section>`;
 }
@@ -518,7 +525,11 @@ function renderAccountEditor(account = null, professors = []) {
   const showProfessorLink = role === 'student';
   const professorField = renderProfessorDrill(activeProfessors, account?.professor_id || activeProfessors[0]?.id || '', { required: showProfessorLink });
   const professorBlock = `<div data-professor-link-field${showProfessorLink ? '' : ' hidden'}><span class="saude-choice-label">🩺 Professor responsável</span>${professorField}${activeProfessors.length ? '' : '<p class="saude-empty-row">Cadastre um professor ativo antes de vincular alunos.</p>'}</div>`;
-  return `<section class="module-page"><button class="back-link" type="button" data-module="accounts">‹ Voltar para contas</button><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>${editing ? '✏️ Editar conta' : '➕ Nova conta'}</h1><p>${editing ? 'Atualize os dados do acesso.' : 'Cadastre um acesso de professor ou aluno.'}</p></div></header><form class="saude-student-form fin-list" data-account-form data-editing="${editing}" data-id="${esc(account?.id ?? account?.user_id ?? '')}"><label>👤 Nome<input name="name" maxlength="80" required autocomplete="name" value="${esc(account?.name || account?.nome || '')}"></label><label>✉️ E-mail<input name="email" type="email" maxlength="160" required autocomplete="email" value="${esc(account?.email || '')}"></label>${roleField}${professorBlock}${editing ? '' : '<p class="saude-empty-row">Uma senha temporária única será gerada e exibida após criar a conta. O usuário deverá trocá-la no primeiro acesso.</p>'}<button type="submit" class="saude-btn saude-btn--primary">${editing ? 'Salvar alterações' : 'Criar conta'}</button></form></section>`;
+  const phoneValue = formatBrazilPhone(account?.phone || account?.telefone || '') || String(account?.phone || account?.telefone || '');
+  const phoneField = role === 'admin'
+    ? ''
+    : `<label>📱 Telefone<input name="phone" type="tel" maxlength="20" required autocomplete="tel" inputmode="numeric" placeholder="27988516301" value="${esc(phoneValue)}"></label>`;
+  return `<section class="module-page"><button class="back-link" type="button" data-module="accounts">‹ Voltar para contas</button><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>${editing ? '✏️ Editar conta' : '➕ Nova conta'}</h1><p>${editing ? 'Atualize os dados do acesso.' : 'Cadastre um acesso de professor ou aluno.'}</p></div></header><form class="saude-student-form fin-list" data-account-form data-editing="${editing}" data-id="${esc(account?.id ?? account?.user_id ?? '')}"><label>👤 Nome<input name="name" maxlength="80" required autocomplete="name" value="${esc(account?.name || account?.nome || '')}"></label><label>✉️ E-mail<input name="email" type="email" maxlength="160" required autocomplete="email" value="${esc(account?.email || '')}"></label>${phoneField}${roleField}${professorBlock}${editing ? '' : '<p class="saude-empty-row">Após criar a conta, enviamos um e-mail com o link para a pessoa criar a senha.</p>'}<button type="submit" class="saude-btn saude-btn--primary">${editing ? 'Salvar alterações' : 'Criar conta e enviar convite'}</button></form></section>`;
 }
 
 function renderObservability(metrics = {}) {
@@ -762,7 +773,11 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   container.querySelectorAll('[data-action="back-to-profiles"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('users')));
   container.querySelectorAll('[data-regenerate-password]').forEach(button => button.addEventListener('click', async () => {
     const pending = (state.accounts || []).find(account => String(account.id) === button.dataset.id)?.must_change_password;
-    if (await confirmAction('Uma nova senha provisória será gerada. A senha anterior deixará de funcionar. O usuário deverá criar uma senha pessoal no próximo acesso.', { title: pending ? 'Gerar nova senha temporária?' : 'Resetar senha para provisória?', confirmLabel: pending ? 'Gerar e copiar' : 'Resetar senha' })) onRegeneratePassword?.(button.dataset.id);
+    const title = pending ? 'Reenviar convite?' : 'Enviar link de nova senha?';
+    const message = pending
+      ? 'Um novo e-mail com o link para criar a senha será enviado. O link anterior deixa de valer.'
+      : 'A pessoa receberá um e-mail para definir uma nova senha. Até concluir, o acesso fica pendente de troca de senha.';
+    if (await confirmAction(message, { title, confirmLabel: pending ? 'Reenviar convite' : 'Enviar link' })) onRegeneratePassword?.(button.dataset.id);
   }));
   container.querySelectorAll('[data-admin-access]').forEach((button) => button.addEventListener('click', () => onAccountAccess?.(button.dataset.id, button.dataset.enabled !== 'true')));
   container.querySelectorAll('[data-edit-account]').forEach((button) => button.addEventListener('click', () => onNavigate?.('editAccount', button.dataset.id)));
@@ -833,6 +848,7 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     const values = new FormData(form);
     const role = String(values.get('role') || state.editingAccount?.role || 'student');
     const payload = { name: String(values.get('name') || '').trim(), email: String(values.get('email') || '').trim(), role };
+    if (role !== 'admin') payload.phone = String(values.get('phone') || '').trim();
     if (role === 'student') payload.professor_id = String(values.get('professor_id') || '').trim();
     if (form.dataset.editing === 'true') onEditAccount?.({ ...payload, id: form.dataset.id });
     else onCreateAccount?.(payload);

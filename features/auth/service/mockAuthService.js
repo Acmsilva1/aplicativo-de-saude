@@ -1,5 +1,7 @@
 import { randomUUID, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { useMockData } from '../../../lib/env.js';
+import { normalizeBrazilPhone } from '../../../lib/phone.js';
+import { isStrongPassword, STRONG_PASSWORD_ERROR } from '../../../lib/passwordPolicy.js';
 
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEY_LEN = 64;
@@ -23,17 +25,19 @@ function verifyPassword(plain, stored) {
 
 const seedHash = hashPassword(DEFAULT_PASSWORD);
 const professorId = 'demo-professor';
+const inviteTokens = new Map();
 
 const accounts = [
-  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: true, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null },
-  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: true, name: 'Professor', role: 'professor', role_label: 'Professor', access: true, professor_id: null },
-  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: true, name: 'André', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId },
+  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: true, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '' },
+  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: true, name: 'Professor', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001' },
+  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: true, name: 'André', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002' },
 ];
 for (const [id, name, email] of [['demo-student-ana', 'Ana', 'ana@saude.local'], ['demo-student-bruno', 'Bruno', 'bruno@saude.local'], ['demo-student-carla', 'Carla', 'carla@saude.local'], ['demo-student-diego', 'Diego', 'diego@saude.local']]) {
-  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: true, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId });
+  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: true, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '' });
 }
 
 const sessions = new Map();
+const webauthnCredentials = new Map();
 
 function professorName(id) {
   if (!id) return '';
@@ -56,7 +60,7 @@ function sessionCookieOptions(req) {
   return { httpOnly: true, sameSite: 'strict', secure: isSecureCookie(req), path: '/', maxAge: 8 * 60 * 60 * 1000 };
 }
 
-function publicAccount({ password_hash, ...account }) {
+function publicAccount({ password_hash, invite_pending, ...account }) {
   const out = { ...account };
   if (account.role === 'student' && account.professor_id) {
     out.professor_name = professorName(account.professor_id);
@@ -67,6 +71,15 @@ function publicAccount({ password_hash, ...account }) {
 function cookie(req) {
   const entry = String(req.headers.cookie || '').split(';').map((x) => x.trim()).find((x) => x.startsWith('ritmo_saude_demo='));
   return entry ? entry.slice('ritmo_saude_demo='.length) : '';
+}
+
+function issueSetupToken(accountId) {
+  for (const [token, id] of inviteTokens) {
+    if (id === accountId) inviteTokens.delete(token);
+  }
+  const setupToken = randomBytes(24).toString('base64url');
+  inviteTokens.set(setupToken, accountId);
+  return setupToken;
 }
 
 export function isMockAuthEnabled() {
@@ -94,40 +107,72 @@ function resolveProfessorId(role, professor_id) {
   return id;
 }
 
-export function createDemoAccount({ name, email, role, professor_id }) {
+export function createDemoAccount({ name, email, role, professor_id, phone, telefone }) {
   const n = String(name || '').trim().slice(0, 80);
   const e = String(email || '').trim().toLowerCase();
-  if (!n || !['professor', 'student'].includes(role) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || accounts.some((x) => x.email === e)) return { error: 'Informe nome, e-mail único e perfil Professor ou Aluno.' };
+  const phoneResult = normalizeBrazilPhone(phone || telefone);
+  if (!n || !['professor', 'student'].includes(role) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || accounts.some((x) => x.email === e)) {
+    return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
+  }
+  if (phoneResult.error) return { error: phoneResult.error };
   const linkId = resolveProfessorId(role, professor_id);
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
   }
-  const initialPassword = randomBytes(18).toString('base64url');
   const account = {
     id: `demo-${randomUUID()}`,
     name: n,
     email: e,
-    password_hash: hashPassword(initialPassword),
+    phone: phoneResult.phone,
+    password_hash: null,
     must_change_password: true,
+    invite_pending: true,
     role,
     role_label: role === 'professor' ? 'Professor' : 'Aluno',
     access: true,
     professor_id: linkId,
   };
   accounts.push(account);
-  return { account: publicAccount(account), initialPassword };
+  const setupToken = issueSetupToken(account.id);
+  return { account: publicAccount(account), inviteSent: true, setupToken };
 }
 
-export function regenerateTemporaryPassword(id) {
-  const account = accounts.find(item => item.id === id);
+export function sendPasswordSetupEmail(id) {
+  const account = accounts.find((item) => item.id === id);
   if (!account || account.role === 'admin' || !account.access) {
     return { error: 'Selecione uma conta ativa de professor ou aluno.' };
   }
-  const initialPassword = randomBytes(18).toString('base64url');
-  account.password_hash = hashPassword(initialPassword);
   account.must_change_password = true;
+  account.invite_pending = true;
   for (const [key, value] of sessions) if (value === id) sessions.delete(key);
-  return { account: publicAccount(account), initialPassword };
+  const setupToken = issueSetupToken(id);
+  return { account: publicAccount(account), inviteSent: true, setupToken };
+}
+
+/** @deprecated use sendPasswordSetupEmail */
+export function regenerateTemporaryPassword(id) {
+  return sendPasswordSetupEmail(id);
+}
+
+export function completeDemoInvite(req, res, { setup_token, access_token, password } = {}) {
+  const token = String(setup_token || access_token || '').trim();
+  const next = String(password || '');
+  if (!token || !isStrongPassword(next)) {
+    return { error: STRONG_PASSWORD_ERROR };
+  }
+  const id = inviteTokens.get(token);
+  if (!id) return { error: 'Link inválido ou expirado. Peça um novo convite ao administrador.' };
+  const account = accounts.find((x) => x.id === id && x.access);
+  if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
+  account.password_hash = hashPassword(next);
+  account.must_change_password = false;
+  account.invite_pending = false;
+  inviteTokens.delete(token);
+  for (const [key, value] of sessions) if (value === account.id) sessions.delete(key);
+  const sessionToken = randomUUID();
+  sessions.set(sessionToken, account.id);
+  res.cookie('ritmo_saude_demo', sessionToken, sessionCookieOptions(req));
+  return { account: publicAccount(account) };
 }
 
 export function setAccountAccess(id, access) {
@@ -140,7 +185,7 @@ export function setAccountAccess(id, access) {
 
 function findLoginAccount(email, password) {
   const normalized = String(email || '').trim().toLowerCase();
-  return accounts.find((x) => x.access && x.email === normalized && verifyPassword(password, x.password_hash)) || null;
+  return accounts.find((x) => x.access && x.email === normalized && x.password_hash && verifyPassword(password, x.password_hash)) || null;
 }
 
 export function createDemoSession(req, res) {
@@ -150,6 +195,41 @@ export function createDemoSession(req, res) {
   sessions.set(token, account.id);
   res.cookie('ritmo_saude_demo', token, sessionCookieOptions(req));
   return publicAccount(account);
+}
+
+export function createDemoSessionForUserId(req, res, userId) {
+  const account = accounts.find((x) => x.id === userId && x.access);
+  if (!account) return null;
+  const token = randomUUID();
+  sessions.set(token, account.id);
+  res.cookie('ritmo_saude_demo', token, sessionCookieOptions(req));
+  return publicAccount(account);
+}
+
+export function listWebAuthnCredentials(userId) {
+  return [...webauthnCredentials.values()].filter((row) => row.user_id === userId);
+}
+
+export function getWebAuthnCredential(credentialId) {
+  return webauthnCredentials.get(credentialId) || null;
+}
+
+export function saveWebAuthnCredential(row) {
+  webauthnCredentials.set(row.credential_id, { ...row });
+}
+
+export function deleteWebAuthnCredential(credentialId, userId) {
+  const current = webauthnCredentials.get(credentialId);
+  if (!current || current.user_id !== userId) return false;
+  webauthnCredentials.delete(credentialId);
+  return true;
+}
+
+export function updateWebAuthnCounter(credentialId, counter) {
+  const current = webauthnCredentials.get(credentialId);
+  if (!current) return;
+  current.counter = counter;
+  webauthnCredentials.set(credentialId, current);
 }
 
 export function getDemoUser(req) {
@@ -163,7 +243,7 @@ export function clearDemoSession(req, res) {
   res.clearCookie('ritmo_saude_demo', { httpOnly: true, sameSite: 'strict', secure: isSecureCookie(req), path: '/' });
 }
 
-export function updateDemoAccount(id, { name, email, role, professor_id }) {
+export function updateDemoAccount(id, { name, email, role, professor_id, phone, telefone }) {
   const a = accounts.find((x) => x.id === id);
   if (!a) return { error: 'Conta não encontrada.' };
   const n = String(name || '').trim().slice(0, 80);
@@ -173,6 +253,12 @@ export function updateDemoAccount(id, { name, email, role, professor_id }) {
   }
   if (a.role === 'admin' && role !== 'admin') return { error: 'O perfil da Administração é protegido.' };
   if (a.role !== 'admin' && !['professor', 'student'].includes(role)) return { error: 'Perfil inválido.' };
+  let phoneValue = a.phone || '';
+  if (a.role !== 'admin' && role !== 'admin') {
+    const phoneResult = normalizeBrazilPhone(phone || telefone || a.phone);
+    if (phoneResult.error) return { error: phoneResult.error };
+    phoneValue = phoneResult.phone;
+  }
   if (role === 'student') {
     const linkId = resolveProfessorId(role, professor_id ?? a.professor_id);
     if (linkId === undefined) return { error: 'Selecione um professor ativo para vincular o aluno.' };
@@ -181,7 +267,13 @@ export function updateDemoAccount(id, { name, email, role, professor_id }) {
     a.professor_id = null;
   }
   const changedRole = a.role !== role;
-  Object.assign(a, { name: n, email: e, role, role_label: role === 'admin' ? 'Administrador' : role === 'professor' ? 'Professor' : 'Aluno' });
+  Object.assign(a, {
+    name: n,
+    email: e,
+    phone: role === 'admin' ? a.phone : phoneValue,
+    role,
+    role_label: role === 'admin' ? 'Administrador' : role === 'professor' ? 'Professor' : 'Aluno',
+  });
   if (changedRole) for (const [key, value] of sessions) if (value === id) sessions.delete(key);
   return { account: publicAccount(a) };
 }
@@ -189,6 +281,12 @@ export function updateDemoAccount(id, { name, email, role, professor_id }) {
 export function deleteDemoAccount(id) {
   const index = accounts.findIndex((x) => x.id === id);
   if (index < 0 || accounts[index].role === 'admin') return false;
+  for (const [token, accountId] of inviteTokens) {
+    if (accountId === id) inviteTokens.delete(token);
+  }
+  for (const [credentialId, row] of webauthnCredentials) {
+    if (row.user_id === id) webauthnCredentials.delete(credentialId);
+  }
   accounts.splice(index, 1);
   for (const [key, value] of sessions) if (value === id) sessions.delete(key);
   return true;
@@ -198,11 +296,13 @@ export function changeDemoPassword(req, res, password) {
   const user = getDemoUser(req);
   if (!user) return null;
   const next = String(password || '');
-  if (next.length < 8 || next.length > 80 || next === DEFAULT_PASSWORD) return null;
+  if (!isStrongPassword(next) || next === DEFAULT_PASSWORD) return null;
   const account = accounts.find((x) => x.id === user.id);
+  if (!account?.password_hash) return null;
   if (verifyPassword(next, account.password_hash)) return null;
   account.password_hash = hashPassword(next);
   account.must_change_password = false;
+  account.invite_pending = false;
   for (const [key, value] of sessions) if (value === account.id) sessions.delete(key);
   const token = randomUUID();
   sessions.set(token, account.id);

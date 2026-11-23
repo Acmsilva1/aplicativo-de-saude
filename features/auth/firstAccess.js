@@ -1,36 +1,159 @@
 import { formFeedback, authErrorMessage } from './formFeedback.js';
+import { isStrongPassword, STRONG_PASSWORD_HINT, STRONG_PASSWORD_ERROR } from '../../lib/passwordPolicy.js';
 
-export function renderPasswordChange(container,{user,error='',onSubmit,onLogout}){
- const shell=document.createElement('main');shell.className='password-change-shell';
- const card=document.createElement('section');card.className='password-change-card';
- const heading=document.createElement('h1');heading.textContent=`Olá, ${user.name}!`;
- const description=document.createElement('p');description.textContent='Para proteger seu acesso, escolha sua senha pessoal antes de continuar.';
- card.append(heading,description);
- const form=document.createElement('form');
- form.innerHTML='<label for="new-password">Nova senha</label><input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="80" required><small>Use de 8 a 80 caracteres.</small><label for="confirm-password">Confirme a nova senha</label><input id="confirm-password" name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="80" required><button type="submit" class="button button--primary">Salvar senha e continuar</button>';
- const feedback=formFeedback(form);
- if(error)feedback.show(error);
- form.addEventListener('submit',async event=>{
-  event.preventDefault();feedback.clear();
-  const password=form.elements.namedItem('password');
-  const confirmation=form.elements.namedItem('confirmation');
-  if(password.value.length<8||password.value.length>80){feedback.show('Escolha uma senha de 8 a 80 caracteres.',password);return;}
-  if(password.value!==confirmation.value){feedback.show('As senhas precisam ser iguais.',confirmation);return;}
-  const button=form.querySelector('button[type="submit"]');
-  button.disabled=true;button.textContent='Salvando senha…';form.setAttribute('aria-busy','true');
-  try{await onSubmit(password.value);}
-  catch(cause){feedback.show(authErrorMessage(cause));}
-  finally{button.disabled=false;button.textContent='Salvar senha e continuar';form.removeAttribute('aria-busy');}
- });
- const logout=document.createElement('button');logout.type='button';logout.className='button';logout.textContent='Sair';logout.addEventListener('click',onLogout);
- card.append(form,logout);shell.append(card);container.replaceChildren(shell);
+function bindPasswordForm(form, feedback, { submitLabel, onSubmit }) {
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    feedback.clear();
+    const password = form.elements.namedItem('password');
+    const confirmation = form.elements.namedItem('confirmation');
+    if (!isStrongPassword(password.value)) {
+      feedback.show(STRONG_PASSWORD_ERROR, password);
+      return;
+    }
+    if (password.value !== confirmation.value) {
+      feedback.show('As senhas precisam ser iguais.', confirmation);
+      return;
+    }
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'Salvando senha…';
+    form.setAttribute('aria-busy', 'true');
+    try {
+      await onSubmit(password.value);
+    } catch (cause) {
+      feedback.show(authErrorMessage(cause));
+    } finally {
+      button.disabled = false;
+      button.textContent = submitLabel;
+      form.removeAttribute('aria-busy');
+    }
+  });
 }
-export function showWelcome(user){
- const overlay=document.createElement('div');overlay.className='login-welcome';overlay.setAttribute('role','status');overlay.setAttribute('aria-live','polite');
- const card=document.createElement('div');const mark=document.createElement('span');mark.className='welcome-heart';mark.textContent='♥';mark.setAttribute('aria-hidden','true');
- const heading=document.createElement('h1');heading.textContent=`Boas-vindas, ${user.name}!`;
- const text=document.createElement('p');text.textContent='Que bom ter você por aqui. Estamos preparando seu espaço.';
- card.append(mark,heading,text);overlay.append(card);document.body.append(overlay);
- const app=document.querySelector('#app');app?.setAttribute('inert','');app?.setAttribute('aria-busy','true');
- return ()=>{overlay.remove();app?.removeAttribute('inert');app?.removeAttribute('aria-busy');};
+
+function passwordFieldsHtml() {
+  return `<label for="new-password">Nova senha</label><input id="new-password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="80" required><small>${STRONG_PASSWORD_HINT}</small><label for="confirm-password">Confirme a nova senha</label><input id="confirm-password" name="confirmation" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="80" required><button type="submit" class="button button--primary">Salvar senha e continuar</button>`;
+}
+
+export function renderPasswordChange(container, { user, error = '', onSubmit, onLogout }) {
+  const shell = document.createElement('main');
+  shell.className = 'password-change-shell';
+  const card = document.createElement('section');
+  card.className = 'password-change-card';
+  const heading = document.createElement('h1');
+  heading.textContent = `Olá, ${user.name}!`;
+  const description = document.createElement('p');
+  description.textContent = 'Para proteger seu acesso, escolha sua senha pessoal antes de continuar.';
+  card.append(heading, description);
+  const form = document.createElement('form');
+  form.setAttribute('autocomplete', 'off');
+  form.setAttribute('data-lpignore', 'true');
+  form.setAttribute('data-1p-ignore', 'true');
+  form.innerHTML = passwordFieldsHtml();
+  const feedback = formFeedback(form);
+  if (error) feedback.show(error);
+  bindPasswordForm(form, feedback, { submitLabel: 'Salvar senha e continuar', onSubmit });
+  const logout = document.createElement('button');
+  logout.type = 'button';
+  logout.className = 'button';
+  logout.textContent = 'Sair';
+  logout.addEventListener('click', onLogout);
+  card.append(form, logout);
+  shell.append(card);
+  container.replaceChildren(shell);
+}
+
+/** Define senha a partir do link de convite/recuperação do e-mail. */
+export function renderInvitePassword(container, { error = '', onSubmit, onCancel }) {
+  const shell = document.createElement('main');
+  shell.className = 'password-change-shell';
+  const card = document.createElement('section');
+  card.className = 'password-change-card';
+  const heading = document.createElement('h1');
+  heading.textContent = 'Crie sua senha';
+  const description = document.createElement('p');
+  description.textContent = 'Use o link do e-mail para ativar sua conta com uma senha forte.';
+  card.append(heading, description);
+  const form = document.createElement('form');
+  form.setAttribute('autocomplete', 'off');
+  form.setAttribute('data-lpignore', 'true');
+  form.setAttribute('data-1p-ignore', 'true');
+  form.innerHTML = passwordFieldsHtml();
+  const feedback = formFeedback(form);
+  if (error) feedback.show(error);
+  bindPasswordForm(form, feedback, { submitLabel: 'Salvar senha e continuar', onSubmit });
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'button';
+  cancel.textContent = 'Voltar ao login';
+  cancel.addEventListener('click', onCancel);
+  card.append(form, cancel);
+  shell.append(card);
+  container.replaceChildren(shell);
+}
+
+/** Tela de entrada por biometria com fallback para senha. */
+export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePassword }) {
+  const shell = document.createElement('main');
+  shell.className = 'password-change-shell';
+  const card = document.createElement('section');
+  card.className = 'password-change-card biometric-unlock-card';
+  card.innerHTML = `
+    <h1>Entrar com biometria</h1>
+    <p>Use a digital ou o reconhecimento facial deste aparelho para acessar o Ritmo Saúde.</p>
+    <div class="auth-feedback" role="alert" hidden><span></span></div>
+    <button type="button" class="button button--primary" data-biometric-unlock>Usar digital ou Face ID</button>
+    <button type="button" class="button" data-biometric-password>Entrar com e-mail e senha</button>
+  `;
+  const alertBox = card.querySelector('.auth-feedback');
+  const showError = (message) => {
+    alertBox.querySelector('span').textContent = message || '';
+    alertBox.hidden = !message;
+  };
+  if (error) showError(error);
+  const unlockBtn = card.querySelector('[data-biometric-unlock]');
+  unlockBtn.addEventListener('click', async () => {
+    showError('');
+    unlockBtn.disabled = true;
+    unlockBtn.textContent = 'Aguardando biometria…';
+    try {
+      await onUnlock?.();
+    } catch (cause) {
+      showError(authErrorMessage(cause));
+    } finally {
+      unlockBtn.disabled = false;
+      unlockBtn.textContent = 'Usar digital ou Face ID';
+    }
+  });
+  card.querySelector('[data-biometric-password]').addEventListener('click', () => onUsePassword?.());
+  shell.append(card);
+  container.replaceChildren(shell);
+  queueMicrotask(() => unlockBtn.click());
+}
+
+export function showWelcome(user) {
+  const overlay = document.createElement('div');
+  overlay.className = 'login-welcome';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+  const card = document.createElement('div');
+  const mark = document.createElement('span');
+  mark.className = 'welcome-heart';
+  mark.textContent = '♥';
+  mark.setAttribute('aria-hidden', 'true');
+  const heading = document.createElement('h1');
+  heading.textContent = `Boas-vindas, ${user.name}!`;
+  const text = document.createElement('p');
+  text.textContent = 'Que bom ter você por aqui. Estamos preparando seu espaço.';
+  card.append(mark, heading, text);
+  overlay.append(card);
+  document.body.append(overlay);
+  const app = document.querySelector('#app');
+  app?.setAttribute('inert', '');
+  app?.setAttribute('aria-busy', 'true');
+  return () => {
+    overlay.remove();
+    app?.removeAttribute('inert');
+    app?.removeAttribute('aria-busy');
+  };
 }

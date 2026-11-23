@@ -5,8 +5,7 @@ const db=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE
 const base='http://127.0.0.1:5199',created=[],checks=[];
 const checked=result=>{if(result.error)throw Error(result.error.message);return result.data;};
 const done=name=>checks.push({name,ok:true});
-const password=randomBytes(20).toString('base64url');
-const initialPasswords=new Set();
+const password=`Audit-${randomBytes(12).toString('base64url')}!1`;
 async function call(actor,path,method='GET',body){
  const response=await fetch(`${base}${path}`,{method,headers:{Cookie:actor.cookie||'','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(20000)});
  const cookies=response.headers.getSetCookie?.()||[];
@@ -16,38 +15,44 @@ async function call(actor,path,method='GET',body){
 const auth=(actor,resource,method,body)=>call(actor,`/api/auth?resource=${resource}`,method,body);
 const health=(actor,resource,method,body)=>call(actor,`/api/saude?resource=${resource}`,method,body);
 async function login(actor,pass=actor.password||password){const r=await auth(actor,'login','POST',{email:actor.email,password:pass});assert.equal(r.status,200);return r;}
+async function setPassword(userId,nextPassword,{mustChange=false}={}){
+ checked(await db.auth.admin.updateUserById(userId,{password:nextPassword,email_confirm:true}));
+ checked(await db.from('health_user_roles').update({must_change_password:mustChange}).eq('user_id',userId));
+}
 try{
  const email=`ritmo.crud.${Date.now()}@example.com`;
  const {user}=checked(await db.auth.admin.createUser({email,password,email_confirm:true}));
- const admin={id:user.id,email};created.push(admin);
+ const admin={id:user.id,email,password};created.push(admin);
  checked(await db.from('health_user_profiles').insert({user_id:admin.id,nome:'AUDITORIA CRUD',email}));
  checked(await db.from('health_user_roles').insert({user_id:admin.id,role:'admin',access_enabled:true,must_change_password:false}));
  await login(admin);
  async function account(role,professor_id){
-  const r=await auth(admin,'accounts','POST',{name:'AUDITORIA CRUD',email:`ritmo.crud.${role}.${Date.now()}@example.com`,role,professor_id});
+  const r=await auth(admin,'accounts','POST',{name:'AUDITORIA CRUD',email:`ritmo.crud.${role}.${Date.now()}@example.com`,role,professor_id,phone:'27988516301'});
   assert.equal(r.status,201);const actor=r.data.account;created.push(actor);
-  assert.equal(r.data.initialPassword.length,24);
-  assert.notEqual(r.data.initialPassword,'123456');
-  assert.ok(!initialPasswords.has(r.data.initialPassword));initialPasswords.add(r.data.initialPassword);
-  const reset=await auth(admin,'account-temporary-password','POST',{id:actor.id});
-  assert.equal(reset.status,200);assert.equal(reset.data.initialPassword.length,24);
-  assert.notEqual(reset.data.initialPassword,r.data.initialPassword);
-  assert.equal((await auth(actor,'login','POST',{email:actor.email,password:r.data.initialPassword})).status,401);
-  await login(actor,reset.data.initialPassword);
-  assert.equal((await health(actor,role==='professor'?'professor-users':'agua')).status,403);
-  assert.equal((await auth(actor,'change-password','POST',{password})).status,200);
-  const recovered=await auth(admin,'account-temporary-password','POST',{id:actor.id});
-  assert.equal(recovered.status,200);assert.equal(recovered.data.account.must_change_password,true);
-  assert.ok([401,403].includes((await health(actor,role==='professor'?'professor-users':'agua')).status));
+  assert.equal(r.data.inviteSent,true);
+  assert.equal(r.data.initialPassword,undefined);
+  assert.equal(actor.phone,'+5527988516301');
+  assert.equal(actor.must_change_password,true);
   assert.equal((await auth(actor,'login','POST',{email:actor.email,password})).status,401);
-  await login(actor,recovered.data.initialPassword);
+  await setPassword(actor.id,password,{mustChange:true});
+  await login(actor,password);
   assert.equal((await health(actor,role==='professor'?'professor-users':'agua')).status,403);
-  actor.password=password+'-recovered';
+  assert.equal((await auth(actor,'change-password','POST',{password:`${password}-ok`})).status,200);
+  actor.password=`${password}-ok`;
+  const recovered=await auth(admin,'account-password-link','POST',{id:actor.id});
+  assert.equal(recovered.status,200);assert.equal(recovered.data.inviteSent,true);
+  assert.equal(recovered.data.account.must_change_password,true);
+  assert.ok([401,403].includes((await health(actor,role==='professor'?'professor-users':'agua')).status));
+  const next=`${password}-reset`;
+  await setPassword(actor.id,next,{mustChange:true});
+  await login(actor,next);
+  assert.equal((await health(actor,role==='professor'?'professor-users':'agua')).status,403);
+  actor.password=`${next}-personal`;
   assert.equal((await auth(actor,'change-password','POST',{password:actor.password})).status,200);
   return actor;
  }
  const professor=await account('professor');const student=await account('student',professor.id);
- done('unique 24-character temporary passwords; admin regeneration invalidates old password; first access enforced; admin can reset forgotten personal password; mandatory change restored');
+ done('invite without temporary password; phone stored; admin resend link; first access enforced; personal password after reset');
  const payload={user_id:student.id,titulo:'AUDITORIA dieta semanal',semanal:true,semana:Array.from({length:7},(_,i)=>({titulo:`Dia ${i}`,refeicoes:[{tipo:'almoco',titulo:'Almoço',itens:[{nome:'Arroz',quantidade:'100 g'}]}]}))};
  const diet=await health(professor,'professor-dieta','POST',payload);assert.equal(diet.status,201);
  const id=diet.data.id;assert.ok(id);

@@ -278,6 +278,45 @@ a {
   border-color: #6d9b79;
   box-shadow: 0 0 0 3px #4e855c1f;
 }
+.login-biometric-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  margin-top: 14px;
+  padding: 12px 12px 10px;
+  border: 1px solid #dfe7df;
+  border-radius: 12px;
+  background: #f7faf7;
+  cursor: pointer;
+}
+.login-biometric-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #3f7a55;
+}
+.login-biometric-toggle strong {
+  display: block;
+  color: #21382e;
+  font-size: 13px;
+  font-weight: 700;
+}
+.login-biometric-toggle small {
+  display: block;
+  margin-top: 4px;
+  color: #6d7c73;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.biometric-unlock-card {
+  display: grid;
+  gap: 12px;
+}
+.biometric-unlock-card .button {
+  width: 100%;
+}
 .password-field {
   position: relative;
 }

@@ -24,6 +24,12 @@ export async function changePassword(req, res, password) {
     : real.changePassword(req, res, password);
 }
 
+export async function completeInvite(req, res, payload) {
+  return useMockData()
+    ? mock.completeDemoInvite(req, res, payload)
+    : real.completeInvite(req, res, payload);
+}
+
 export async function listUsers() {
   return useMockData() ? mock.listDemoUsers() : real.listUsers();
 }
@@ -38,12 +44,18 @@ export async function listAvailableStudents(professorId = '') {
     : real.listAvailableStudents(professorId);
 }
 
-export async function createAccount(payload) {
-  return useMockData() ? mock.createDemoAccount(payload) : real.createAccount(payload);
+export async function createAccount(payload, req) {
+  return useMockData() ? mock.createDemoAccount(payload) : real.createAccount(payload, req);
 }
 
-export async function regenerateTemporaryPassword(id) {
-  return useMockData() ? mock.regenerateTemporaryPassword(id) : real.regenerateTemporaryPassword(id);
+export async function sendPasswordSetupEmail(id, req) {
+  return useMockData()
+    ? mock.sendPasswordSetupEmail(id)
+    : real.sendPasswordSetupEmail(id, req);
+}
+
+export async function regenerateTemporaryPassword(id, req) {
+  return sendPasswordSetupEmail(id, req);
 }
 
 export async function updateAccount(id, payload) {
@@ -57,3 +69,11 @@ export async function setAccountAccess(id, access) {
 export async function deleteAccount(id) {
   return useMockData() ? mock.deleteDemoAccount(id) : real.deleteAccount(id);
 }
+
+export {
+  getWebAuthnRegisterOptions,
+  verifyWebAuthnRegistration,
+  getWebAuthnLoginOptions,
+  verifyWebAuthnLogin,
+  revokeWebAuthnCredential,
+} from './webauthnService.js';

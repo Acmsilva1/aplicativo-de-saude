@@ -1,7 +1,19 @@
 import { formFeedback, authErrorMessage } from './formFeedback.js';
+import {
+  isBiometricPreferred,
+  readBiometricPreference,
+  supportsPlatformAuth,
+} from './biometric.js';
 import appInfo from '../../package.json';
 
-export function renderLogin(container, { onLogin, error = '' } = {}) {
+export function renderLogin(container, {
+  onLogin,
+  error = '',
+  biometricSupported = false,
+  preferBiometric = false,
+} = {}) {
+  const pref = readBiometricPreference();
+  const toggleChecked = preferBiometric || isBiometricPreferred();
   container.innerHTML = `
     <main class="login-layout">
       <section class="login-story" aria-label="Ritmo Saúde">
@@ -30,18 +42,26 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
             <span class="eyebrow login-eyebrow login-eyebrow--desktop">Bem-vindo de volta</span>
           </header>
           <h2>Acesse sua rotina</h2>
-          <p class="login-subtitle">Entre com seu e-mail e senha. Sua conta abre a área permitida.</p>
+          <p class="login-subtitle">Entre com o e-mail e a senha definidos no convite. Se ainda não criou a senha, use o link do e-mail ou peça um novo ao administrador.</p>
           <div class="login-access-card">
-            <form id="login-form" class="login-form">
+            <form id="login-form" class="login-form" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
               <label for="email">E-mail</label>
-              <input id="email" name="email" type="email" autocomplete="username" placeholder="voce@exemplo.com" required />
+              <input id="email" name="email" type="email" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="voce@exemplo.com" required />
               <label for="password">Senha</label>
-              <div class="password-field"><input id="password" name="password" type="password" autocomplete="current-password" required /><span class="password-lock" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="2"/><path d="M6.5 8V5.8a3.5 3.5 0 0 1 7 0V8"/></svg></span></div>
+              <div class="password-field"><input id="password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required /><span class="password-lock" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="2"/><path d="M6.5 8V5.8a3.5 3.5 0 0 1 7 0V8"/></svg></span></div>
+              ${biometricSupported ? `
+              <label class="login-biometric-toggle">
+                <input type="checkbox" name="enable_biometric" ${toggleChecked ? 'checked' : ''} />
+                <span>
+                  <strong>Usar digital ou Face ID neste aparelho</strong>
+                  <small>Após entrar, o sistema pede a biometria cadastrada no dispositivo.</small>
+                </span>
+              </label>` : ''}
               <button class="button button--primary login-submit" type="submit"><span>Entrar</span><span aria-hidden="true">↗</span></button>
             </form>
           </div>
           <p class="login-privacy"><span aria-hidden="true">●</span> Acesso protegido à sua conta</p>
-          <p class="login-version">Versão ${appInfo.version}</p>
+          <p class="login-version">Versão ${appInfo.version}${pref?.preferred ? ' · Biometria ativa neste aparelho' : ''}</p>
         </div>
       </section>
     </main>`;
@@ -54,6 +74,7 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
     feedback.clear();
     const email = loginForm.elements.namedItem('email');
     const password = loginForm.elements.namedItem('password');
+    const enableBiometric = Boolean(loginForm.elements.namedItem('enable_biometric')?.checked);
     if (!email.value.trim() || email.validity.typeMismatch) { feedback.show('Informe um e-mail válido.', email); return; }
     if (!password.value) { feedback.show('Informe sua senha.', password); return; }
     const button = loginForm.querySelector('.login-submit');
@@ -61,8 +82,14 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
     button.querySelector('span').textContent = 'Entrando…';
     loginForm.setAttribute('aria-busy', 'true');
     try {
-      await onLogin?.({ email: email.value, password: password.value });
+      await onLogin?.({
+        email: email.value,
+        password: password.value,
+        enableBiometric,
+      });
     } catch (cause) { feedback.show(authErrorMessage(cause)); }
     finally { button.disabled = false; button.querySelector('span').textContent = 'Entrar'; loginForm.removeAttribute('aria-busy'); }
   });
 }
+
+export { supportsPlatformAuth };

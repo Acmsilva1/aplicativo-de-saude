@@ -1,4 +1,5 @@
 import '../lib/env.js';
+import { createClient } from '@supabase/supabase-js';
 
 const base = process.env.E2E_BASE || 'http://127.0.0.1:5198';
 const adminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL || '';
@@ -7,6 +8,8 @@ if (!adminEmail || !adminPassword) {
   throw new Error('Configure BOOTSTRAP_ADMIN_EMAIL e BOOTSTRAP_ADMIN_PASSWORD antes do smoke test.');
 }
 const jar = {};
+const strongProf = 'E2E-Prof-123!';
+const strongAluno = 'E2E-Aluno-123!';
 
 function parseSetCookie(res) {
   const raw = res.headers.getSetCookie?.() || [];
@@ -27,8 +30,8 @@ async function api(path, opts = {}) {
     headers: {
       'Content-Type': 'application/json',
       ...(opts.headers || {}),
-      Cookie: cookieHeader(),
     },
+    Cookie: cookieHeader(),
   });
   parseSetCookie(res);
   const text = await res.text();
@@ -42,6 +45,30 @@ function clearJar() {
   Object.keys(jar).forEach((k) => delete jar[k]);
 }
 
+async function activateAccount(created, password) {
+  if (created.setupToken) {
+    clearJar();
+    await api('/api/auth?resource=complete-invite', {
+      method: 'POST',
+      body: JSON.stringify({ setup_token: created.setupToken, password }),
+    });
+    clearJar();
+    return;
+  }
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Conta criada sem setupToken; configure SUPABASE_SERVICE_ROLE_KEY para o smoke em produção.');
+  }
+  const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error } = await admin.auth.admin.updateUserById(created.account.id, {
+    password,
+    email_confirm: true,
+  });
+  if (error) throw error;
+  await admin.from('health_user_roles').update({ must_change_password: false }).eq('user_id', created.account.id);
+}
+
 const stamp = Date.now();
 const login = await api('/api/auth?resource=login', {
   method: 'POST',
@@ -51,9 +78,14 @@ console.log('admin', login.user.role);
 
 const prof = await api('/api/auth?resource=accounts', {
   method: 'POST',
-  body: JSON.stringify({ name: 'Prof Teste', email: `prof.e2e.${stamp}@saude.local`, role: 'professor' }),
+  body: JSON.stringify({
+    name: 'Prof Teste',
+    email: `prof.e2e.${stamp}@saude.local`,
+    role: 'professor',
+    phone: '27988516001',
+  }),
 });
-console.log('professor', prof.account.id);
+console.log('professor', prof.account.id, prof.inviteSent ? 'invite' : 'created');
 
 const aluno = await api('/api/auth?resource=accounts', {
   method: 'POST',
@@ -62,6 +94,7 @@ const aluno = await api('/api/auth?resource=accounts', {
     email: `aluno.e2e.${stamp}@saude.local`,
     role: 'student',
     professor_id: prof.account.id,
+    phone: '27988516002',
   }),
 });
 console.log('aluno', aluno.account.id);
@@ -69,13 +102,12 @@ console.log('aluno', aluno.account.id);
 await api('/api/auth?resource=logout', { method: 'POST', body: '{}' });
 clearJar();
 
+await activateAccount(prof, strongProf);
+await activateAccount(aluno, strongAluno);
+
 await api('/api/auth?resource=login', {
   method: 'POST',
-  body: JSON.stringify({ email: prof.account.email, password: prof.initialPassword }),
-});
-await api('/api/auth?resource=change-password', {
-  method: 'POST',
-  body: JSON.stringify({ password: 'senhaProf9' }),
+  body: JSON.stringify({ email: prof.account.email, password: strongProf }),
 });
 
 const foods = await api('/api/saude?resource=professor-alimentos');
@@ -113,11 +145,7 @@ clearJar();
 
 await api('/api/auth?resource=login', {
   method: 'POST',
-  body: JSON.stringify({ email: aluno.account.email, password: aluno.initialPassword }),
-});
-await api('/api/auth?resource=change-password', {
-  method: 'POST',
-  body: JSON.stringify({ password: 'senhaAluno9' }),
+  body: JSON.stringify({ email: aluno.account.email, password: strongAluno }),
 });
 
 const diets = await api('/api/saude?resource=dietas');

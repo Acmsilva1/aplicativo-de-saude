@@ -3,9 +3,33 @@ import './pwa.js';
 import { createBackgroundSaves } from './backgroundSaves.js';
 import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
-import { renderPasswordChange, showWelcome } from './auth/firstAccess.js';
+import { renderPasswordChange, renderInvitePassword, renderBiometricUnlock, showWelcome } from './auth/firstAccess.js';
+import {
+  assertBiometric,
+  clearBiometricPreference,
+  enrollBiometric,
+  isBiometricPreferred,
+  readBiometricPreference,
+  revokeBiometric,
+  supportsPlatformAuth,
+  writeBiometricPreference,
+} from './auth/biometric.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',loading:false,moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''};
+const state={user:null,module:'users',loading:false,moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
+let forcePasswordLogin=false;
+function readAuthRedirect(){
+ const hash=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+ const query=new URLSearchParams(location.search);
+ const get=key=>hash.get(key)||query.get(key);
+ const access_token=get('access_token');
+ const type=String(get('type')||'');
+ if(!access_token)return null;
+ if(!['invite','recovery','signup','magiclink'].includes(type)&&!get('refresh_token'))return null;
+ return{access_token,refresh_token:get('refresh_token')||'',type:type||'invite'};
+}
+function clearAuthRedirect(){
+ if(location.hash||/(access_token|type=|refresh_token)/.test(location.search))history.replaceState({},'',location.pathname);
+}
 async function request(url,options={}){
  const controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),20000);
@@ -76,21 +100,93 @@ function saveGoal(id,goal,mode){
   success:()=>{state.profilesLoaded=false;saved('Meta salva.');},failure:failed});
 }
 const initialModule=()=>'home';
+async function maybeEnrollBiometric(){
+ if(!state.pendingBiometricEnroll||!state.user||state.user.must_change_password)return;
+ if(!state.biometricSupported){state.pendingBiometricEnroll=false;return;}
+ state.pendingBiometricEnroll=false;
+ try{
+  const result=await enrollBiometric(request);
+  writeBiometricPreference({userId:state.user.id,credentialId:result.credentialId,preferred:true});
+  state.notice={text:'Biometria ativada neste aparelho.',type:'success'};
+ }catch(error){
+  const message=String(error?.message||'');
+  if(/not allowed|abort|cancel|denied|notallowederror/i.test(message)||error?.name==='NotAllowedError'){
+   state.notice={text:'Biometria não ativada. Você pode ligar no próximo login.',type:'error'};
+   return;
+  }
+  state.notice={text:message||'Não foi possível ativar a biometria.',type:'error'};
+ }
+}
 async function enter(){
  const dismiss=showWelcome(state.user);
  try{
   if(!state.user.must_change_password){
    state.loading=true;
    render();
+   await maybeEnrollBiometric();
    await load(initialModule());
    state.loading=false;
   }
   render();
  }finally{state.loading=false;dismiss();}
 }
-async function logout(){await saves.idle();await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:''});auth();}
+async function logout(){await saves.idle();await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false});forcePasswordLogin=false;bootAuth();}
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
-function auth(error=''){renderLogin(app,{error,onLogin:async credentials=>{state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify(credentials)})).user;await enter();}});}
+function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:isBiometricPreferred(),onLogin:async({email,password,enableBiometric})=>{
+  state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
+  const pref=readBiometricPreference();
+  if(enableBiometric&&state.biometricSupported){
+   if(pref?.credentialId&&pref.userId===state.user.id){
+    state.pendingBiometricEnroll=false;
+    writeBiometricPreference({userId:state.user.id,credentialId:pref.credentialId,preferred:true});
+   }else{
+    state.pendingBiometricEnroll=true;
+   }
+  }else if(pref?.credentialId&&pref.userId===state.user.id){
+   state.pendingBiometricEnroll=false;
+   await revokeBiometric(request,pref.credentialId);
+  }else{
+   state.pendingBiometricEnroll=false;
+   clearBiometricPreference();
+  }
+  forcePasswordLogin=false;
+  await enter();
+}});}
+function biometricAuth(error=''){
+ const pref=readBiometricPreference();
+ renderBiometricUnlock(app,{error,onUsePassword:()=>{forcePasswordLogin=true;auth();},onUnlock:async()=>{
+  if(!pref?.credentialId)throw Error('Ative a biometria pelo login com senha.');
+  try{
+   state.user=(await assertBiometric(request,pref.credentialId)).user;
+  }catch(cause){
+   if(/não encontrada|nao encontrada|indisponível|indisponivel/i.test(String(cause?.message||''))){
+    clearBiometricPreference();
+   }
+   throw cause;
+  }
+  forcePasswordLogin=false;
+  await enter();
+ }});
+}
+function invitePassword(tokens,error=''){
+ renderInvitePassword(app,{error,onCancel:()=>{clearAuthRedirect();auth();},onSubmit:async password=>{
+  state.user=(await request('/api/auth?resource=complete-invite',{method:'POST',body:JSON.stringify({...tokens,password})})).user;
+  clearAuthRedirect();
+  await enter();
+ }});
+}
+async function bootAuth(){
+ state.biometricSupported=await supportsPlatformAuth();
+ if(!forcePasswordLogin&&isBiometricPreferred()&&state.biometricSupported){
+  biometricAuth();
+  return;
+ }
+ try{
+  state.user=(await request('/api/auth?resource=session')).user;
+  if(!state.user.must_change_password)await load(initialModule());
+  render();
+ }catch{auth();}
+}
 async function load(module,targetId=''){
  const userId=['diet-detail','editDiet'].includes(module)?state.selectedUserId:(targetId||state.selectedUserId);
  if(['home','users'].includes(module))await saves.idle();
@@ -163,51 +259,23 @@ async function navigate(module,targetId='',afterLoad){
  try{await load(module,targetId);afterLoad?.();}finally{state.loading=false;render();}
 }
 async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;if(['diets','monitor'].includes(module))state.profilesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
-function showInitialPasswordDialog(account,password,autoCopy=false){
- const dialog=document.createElement('dialog');
- dialog.className='initial-password-dialog';
- dialog.setAttribute('aria-labelledby','initial-password-title');
- dialog.innerHTML='<span class="eyebrow">SENHA TEMPORÁRIA</span><h2 id="initial-password-title">Senha provisória</h2><p data-initial-password-account></p><label for="initial-account-password">Senha provisória</label><input id="initial-account-password" type="text" readonly autocomplete="off"><p class="initial-password-dialog__hint">Use esta senha no próximo acesso. Em seguida, o usuário deverá cadastrar uma senha pessoal com pelo menos 8 caracteres.</p><div class="initial-password-dialog__actions"><button type="button" class="saude-btn saude-btn--primary" data-copy-initial-password>Copiar senha</button><button type="button" class="saude-btn" data-close-initial-password>Fechar</button></div>';
- dialog.querySelector('[data-initial-password-account]').textContent='Senha temporária da conta de '+account.name+'.';
- const input=dialog.querySelector('#initial-account-password');
- input.value=password;
- const copyButton=dialog.querySelector('[data-copy-initial-password]');
- const copyPassword=async()=>{
-  try{
-   await navigator.clipboard.writeText(password);
-   copyButton.textContent='Senha copiada';
-  }catch{
-   input.select();
-   copyButton.textContent='Selecione e copie';
-  }
- };
- copyButton.addEventListener('click',copyPassword);
- dialog.querySelector('[data-close-initial-password]').addEventListener('click',()=>dialog.close());
- dialog.addEventListener('close',()=>dialog.remove(),{once:true});
- document.body.append(dialog);
- dialog.showModal();
- copyButton.focus();
- if(autoCopy)void copyPassword();
-}
-async function regenerateInitialPassword(id){
+async function resendPasswordLink(id){
  if(state.loading)return;
  state.loading=true;render();
- let result;
  try{
-  result=await request('/api/auth?resource=account-temporary-password',{method:'POST',body:JSON.stringify({id})});
+  const result=await request('/api/auth?resource=account-password-link',{method:'POST',body:JSON.stringify({id})});
   state.accounts=state.accounts.map(account=>account.id===id?result.account:account);
+  state.notice={text:'Link de senha enviado para o e-mail da conta.',type:'success'};
  }catch(error){state.notice={text:error.message,type:'error'};}
  finally{state.loading=false;render();}
- if(result)showInitialPasswordDialog(result.account,result.initialPassword,true);
 }
 async function createAccount(payload){
  try{
-  const result=await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
+  await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
   state.accountsLoaded=false;
   await load('accounts');
-  state.notice={text:'Conta criada. Informe ao usuário a senha de primeiro acesso.',type:'success'};
+  state.notice={text:'Convite enviado para o e-mail. A pessoa define a senha pelo link recebido.',type:'success'};
   render();
-  showInitialPasswordDialog(result.account,result.initialPassword);
  }catch(error){
   state.notice={text:error.message,type:'error'};
   render();
@@ -217,7 +285,7 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onNavigate:navigate,
  onLogout:logout,
  onCreateAccount:payload=>createAccount(payload),
- onRegeneratePassword:regenerateInitialPassword,
+ onRegeneratePassword:resendPasswordLink,
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),
  onEditAccount:payload=>action(async()=>{const result=await request('/api/auth?resource=accounts',{method:'PATCH',body:JSON.stringify(payload)});if(result.account.id===state.user.id)state.user=result.account;},'accounts','','Conta atualizada.'),
  onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','','Conta excluída.'),
@@ -231,4 +299,10 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onWaterGoal:(id,goal,mode='save')=>saveGoal(id,goal,mode),
  onWaterAmount:saveWater
  });}
-try{state.user=(await request('/api/auth?resource=session')).user;if(!state.user.must_change_password)await load(initialModule());render();}catch{auth();}
+const inviteTokens=readAuthRedirect();
+if(inviteTokens){
+ clearAuthRedirect();
+ invitePassword(inviteTokens);
+}else{
+ await bootAuth();
+}

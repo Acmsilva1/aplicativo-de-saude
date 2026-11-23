@@ -1,14 +1,20 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { getSupabaseAdmin, createUserClient } from '../../../lib/supabase.js';
+import { getSupabaseAdmin, createUserClient, getSupabaseAnon } from '../../../lib/supabase.js';
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
+import { normalizeBrazilPhone } from '../../../lib/phone.js';
+import { isStrongPassword } from '../../../lib/passwordPolicy.js';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
-const temporaryPasswordDigest = (password) => createHash('sha256').update(password).digest('hex');
-const matchesDigest = (password, digest) => {
-  if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/i.test(digest)) return false;
-  return timingSafeEqual(Buffer.from(temporaryPasswordDigest(password), 'hex'), Buffer.from(digest, 'hex'));
-};
+
+function appPublicUrl(req) {
+  const fromEnv = String(process.env.APP_PUBLIC_URL || '').trim().replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  const proto = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0]?.trim()
+    || (req?.secure ? 'https' : 'http');
+  const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0]?.trim();
+  if (host) return `${proto}://${host}`;
+  return 'https://controle-de-saude.duckdns.org';
+}
 
 function publicAccount(row, professorName = '') {
   if (!row) return null;
@@ -16,6 +22,7 @@ function publicAccount(row, professorName = '') {
     id: row.user_id,
     name: row.nome || '',
     email: row.email || '',
+    phone: row.telefone || '',
     role: row.role,
     role_label: ROLE_LABEL[row.role] || row.role,
     access: row.access_enabled !== false,
@@ -40,7 +47,7 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
 
   const { data: profile, error: profileErr } = await db
     .from('health_user_profiles')
-    .select('user_id, nome, email')
+    .select('user_id, nome, email, telefone')
     .eq('user_id', userId)
     .maybeSingle();
   if (profileErr) throw profileErr;
@@ -59,6 +66,7 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
     ...role,
     nome: profile?.nome || '',
     email: profile?.email || '',
+    telefone: profile?.telefone || '',
   }, professorName);
 }
 
@@ -143,26 +151,38 @@ export async function createSession(req, res) {
   return account;
 }
 
+/** Create an app session cookie for an already-verified user (e.g. WebAuthn). */
+export async function createSessionForUserId(req, res, userId) {
+  const account = await loadAccount(userId);
+  if (!account) return null;
+  const admin = getSupabaseAdmin();
+  const { data: authUser, error: userErr } = await admin.auth.admin.getUserById(userId);
+  if (userErr || !authUser?.user?.email) return null;
+  const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email: authUser.user.email,
+  });
+  if (linkErr || !link?.properties?.hashed_token) return null;
+  const { data, error } = await createUserClient().auth.verifyOtp({
+    type: 'email',
+    token_hash: link.properties.hashed_token,
+  });
+  if (error || !data?.session) return null;
+  setSessionCookie(req, res, data.session);
+  return account;
+}
+
 export async function changePassword(req, res, password) {
   const user = await getUser(req, res);
   if (!user) return null;
   const next = String(password || '');
-  if (next.length < 8 || next.length > 80) return null;
+  if (!isStrongPassword(next)) return null;
 
   const raw = decodeSession(readCookie(req, SESSION_COOKIE));
   if (!raw?.access_token) return null;
 
   const admin = getSupabaseAdmin();
-  const { data: authData, error: authLookupError } = await admin.auth.admin.getUserById(user.id);
-  if (authLookupError || !authData?.user) return null;
-  const appMetadata = authData.user.app_metadata || {};
-  if (matchesDigest(next, appMetadata.initial_password_digest)) return null;
-  const nextAppMetadata = { ...appMetadata };
-  delete nextAppMetadata.initial_password_digest;
-  const { error } = await admin.auth.admin.updateUserById(user.id, {
-    password: next,
-    app_metadata: nextAppMetadata,
-  });
+  const { error } = await admin.auth.admin.updateUserById(user.id, { password: next });
   if (error) return null;
 
   const { error: roleErr } = await admin
@@ -178,6 +198,42 @@ export async function changePassword(req, res, password) {
   if (signErr || !data?.session) return null;
   setSessionCookie(req, res, data.session);
   return loadAccount(user.id);
+}
+
+/** Complete invite/recovery from email link tokens and set a strong password. */
+export async function completeInvite(req, res, { access_token, refresh_token, password } = {}) {
+  const access = String(access_token || '').trim();
+  const refresh = String(refresh_token || '').trim();
+  const next = String(password || '');
+  if (!access || !isStrongPassword(next)) return { error: 'Escolha uma senha forte e use o link do e-mail.' };
+
+  const client = createUserClient(access);
+  const { data: userData, error: userErr } = await client.auth.getUser(access);
+  if (userErr || !userData?.user) return { error: 'Link inválido ou expirado. Peça um novo convite ao administrador.' };
+
+  const { error: updateErr } = await client.auth.updateUser({ password: next });
+  if (updateErr) return { error: updateErr.message || 'Não foi possível salvar a senha.' };
+
+  const admin = getSupabaseAdmin();
+  await admin.from('health_user_roles').update({ must_change_password: false }).eq('user_id', userData.user.id);
+
+  const session = {
+    access_token: access,
+    refresh_token: refresh || undefined,
+    expires_at: null,
+  };
+  const { data: refreshed } = refresh
+    ? await createUserClient().auth.refreshSession({ refresh_token: refresh })
+    : { data: null };
+  if (refreshed?.session) {
+    setSessionCookie(req, res, refreshed.session);
+  } else {
+    setSessionCookie(req, res, session);
+  }
+
+  const account = await loadAccount(userData.user.id);
+  if (!account) return { error: 'Conta indisponível. Consulte o administrador.' };
+  return { account };
 }
 
 async function isActiveProfessor(id) {
@@ -219,7 +275,7 @@ export async function listUsers() {
   const [{ data: profiles, error: profileErr }, professorNames] = await Promise.all([
     db
       .from('health_user_profiles')
-      .select('user_id, nome, email')
+      .select('user_id, nome, email, telefone')
       .in('user_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']),
     listProfessorNames(professorIds),
   ]);
@@ -231,6 +287,7 @@ export async function listUsers() {
       ...role,
       nome: profile.nome || '',
       email: profile.email || '',
+      telefone: profile.telefone || '',
     }, professorNames.get(role.professor_id) || '');
   });
 }
@@ -247,51 +304,43 @@ export async function listAvailableStudents(professorId = '') {
   return list;
 }
 
-export async function createAccount({ name, email, role, professor_id }) {
-  const n = String(name || '').trim().slice(0, 80);
-  const e = String(email || '').trim().toLowerCase();
+export async function createAccount(payload = {}, req = null) {
+  const n = String(payload.name || '').trim().slice(0, 80);
+  const e = String(payload.email || '').trim().toLowerCase();
+  const role = payload.role;
+  const phoneResult = normalizeBrazilPhone(payload.phone || payload.telefone);
   if (!n || !['professor', 'student'].includes(role) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-    return { error: 'Informe nome, e-mail único e perfil Professor ou Aluno.' };
+    return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
   }
-  const linkId = await resolveProfessorId(role, professor_id);
+  if (phoneResult.error) return { error: phoneResult.error };
+  const linkId = await resolveProfessorId(role, payload.professor_id);
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
   }
 
   const admin = getSupabaseAdmin();
-  const initialPassword = randomBytes(18).toString('base64url');
   const { data: existing } = await admin
     .from('health_user_profiles')
     .select('user_id')
     .eq('email', e)
     .maybeSingle();
-  if (existing) return { error: 'Informe nome, e-mail único e perfil Professor ou Aluno.' };
+  if (existing) return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
 
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email: e,
-    password: initialPassword,
-    email_confirm: true,
-    user_metadata: { name: n, role },
+  const redirectTo = appPublicUrl(req);
+  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(e, {
+    data: { name: n, role },
+    redirectTo,
   });
-  if (createErr || !created?.user) {
-    return { error: createErr?.message || 'Não foi possível criar a conta.' };
+  if (inviteErr || !invited?.user) {
+    return { error: inviteErr?.message || 'Não foi possível enviar o convite por e-mail.' };
   }
 
-  const userId = created.user.id;
-  const appMetadata = {
-    ...(created.user.app_metadata || {}),
-    initial_password_digest: temporaryPasswordDigest(initialPassword),
-  };
-  const { error: metadataErr } = await admin.auth.admin.updateUserById(userId, { app_metadata: appMetadata });
-  if (metadataErr) {
-    await admin.auth.admin.deleteUser(userId);
-    return { error: metadataErr.message || 'Falha ao preparar a senha inicial.' };
-  }
-
+  const userId = invited.user.id;
   const { error: profileErr } = await admin.from('health_user_profiles').insert({
     user_id: userId,
     nome: n,
     email: e,
+    telefone: phoneResult.phone,
   });
   if (profileErr) {
     await admin.auth.admin.deleteUser(userId);
@@ -312,41 +361,39 @@ export async function createAccount({ name, email, role, professor_id }) {
   }
 
   const account = await loadAccount(userId);
-  return { account, initialPassword };
+  return { account, inviteSent: true };
 }
 
 const pendingPasswordResets = new Set();
-export async function regenerateTemporaryPassword(id) {
+export async function sendPasswordSetupEmail(id, req = null) {
   if (!id) return { error: 'Selecione uma conta.' };
-  if (pendingPasswordResets.has(id)) return { error: 'Já existe uma redefinição de senha em andamento para esta conta.' };
+  if (pendingPasswordResets.has(id)) return { error: 'Já existe um reenvio de link em andamento para esta conta.' };
   pendingPasswordResets.add(id);
   try {
     const account = await loadAccount(id);
     if (!account || account.role === 'admin') return { error: 'Selecione uma conta ativa de professor ou aluno.' };
     const admin = getSupabaseAdmin();
-    const { data, error: lookupError } = await admin.auth.admin.getUserById(id);
-    if (lookupError || !data?.user) return { error: 'Não foi possível preparar a senha provisória.' };
-    // Block health access before replacing a personal password. Fail closed if
-    // setting the mandatory-change flag fails; never issue an unrestricted temp.
     if (!account.must_change_password) {
       const { error } = await admin.from('health_user_roles').update({ must_change_password: true }).eq('user_id', id);
-      if (error) return { error: 'Não foi possível exigir a troca de senha. Nenhuma senha foi alterada.' };
+      if (error) return { error: 'Não foi possível exigir a troca de senha. Nenhum e-mail foi enviado.' };
     }
-    const initialPassword = randomBytes(18).toString('base64url');
-    const { error } = await admin.auth.admin.updateUserById(id, {
-      password: initialPassword,
-      app_metadata: { ...(data.user.app_metadata || {}), initial_password_digest: temporaryPasswordDigest(initialPassword) },
-    });
+    const redirectTo = appPublicUrl(req);
+    const { error } = await getSupabaseAnon().auth.resetPasswordForEmail(account.email, { redirectTo });
     if (error) {
-      // A network error can occur after Auth committed the replacement. Keep
-      // the account gated rather than risk an unrestricted temporary password.
-      return { error: 'Não foi possível confirmar a nova senha. A conta permanece com troca obrigatória; tente resetar novamente.' };
+      return { error: error.message || 'Não foi possível enviar o e-mail de definição de senha.' };
     }
-    return { account: { ...account, must_change_password: true }, initialPassword };
-  } finally { pendingPasswordResets.delete(id); }
+    return { account: { ...account, must_change_password: true }, inviteSent: true };
+  } finally {
+    pendingPasswordResets.delete(id);
+  }
 }
 
-export async function updateAccount(id, { name, email, role, professor_id }) {
+/** @deprecated use sendPasswordSetupEmail */
+export async function regenerateTemporaryPassword(id, req = null) {
+  return sendPasswordSetupEmail(id, req);
+}
+
+export async function updateAccount(id, { name, email, role, professor_id, phone, telefone }) {
   const admin = getSupabaseAdmin();
   const current = await loadAccount(id, { includeDisabled: true });
   if (!current) return { error: 'Conta não encontrada.' };
@@ -364,6 +411,13 @@ export async function updateAccount(id, { name, email, role, professor_id }) {
     return { error: 'Perfil inválido.' };
   }
 
+  let phoneValue = current.phone || '';
+  if (nextRole !== 'admin') {
+    const phoneResult = normalizeBrazilPhone(phone || telefone || current.phone);
+    if (phoneResult.error) return { error: phoneResult.error };
+    phoneValue = phoneResult.phone;
+  }
+
   let linkId = null;
   if (nextRole === 'student') {
     linkId = await resolveProfessorId(nextRole, professor_id ?? current.professor_id);
@@ -378,9 +432,12 @@ export async function updateAccount(id, { name, email, role, professor_id }) {
     .maybeSingle();
   if (clash) return { error: 'Confira nome e e-mail único.' };
 
+  const profileUpdate = { nome: n, email: e };
+  if (nextRole !== 'admin') profileUpdate.telefone = phoneValue;
+
   const { error: profileErr } = await admin
     .from('health_user_profiles')
-    .update({ nome: n, email: e })
+    .update(profileUpdate)
     .eq('user_id', id);
   if (profileErr) return { error: profileErr.message };
 
