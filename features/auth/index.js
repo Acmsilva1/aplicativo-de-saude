@@ -50,7 +50,7 @@ export function renderLogin(container, {
               <label for="email">E-mail</label>
               <input id="email" name="email" type="email" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="voce@exemplo.com" required />
               <label for="password">Senha</label>
-              <div class="password-field"><input id="password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required /><button type="button" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false"><span class="password-toggle-icon password-toggle-icon--show" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M1.5 10s2.8-5.5 8.5-5.5S18.5 10 18.5 10s-2.8 5.5-8.5 5.5S1.5 10 1.5 10Z"/><circle cx="10" cy="10" r="2.4"/></svg></span><span class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3 4 17 16"/><path d="M5.2 6.4A11.6 11.6 0 0 0 1.5 10s2.8 5.5 8.5 5.5c1.4 0 2.7-.3 3.8-.8"/><path d="M8.1 5.6A4.5 4.5 0 0 1 10 5c3.2 0 5.8 2.6 5.8 5.8 0 .7-.1 1.3-.3 1.9"/><path d="M10 14.5A4.5 4.5 0 0 1 5.5 10c0-.5.1-1 .2-1.4"/></svg></span></button><span class="password-lock" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="2"/><path d="M6.5 8V5.8a3.5 3.5 0 0 1 7 0V8"/></svg></span></div>
+              <div class="password-field"><input id="password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required /><button type="button" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false"><span class="password-toggle-icon password-toggle-icon--show" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M1.5 10s2.8-5.5 8.5-5.5S18.5 10 18.5 10s-2.8 5.5-8.5 5.5S1.5 10 1.5 10Z"/><circle cx="10" cy="10" r="2.4"/></svg></span><span class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3 4 17 16"/><path d="M5.2 6.4A11.6 11.6 0 0 0 1.5 10s2.8 5.5 8.5 5.5c1.4 0 2.7-.3 3.8-.8"/><path d="M8.1 5.6A4.5 4.5 0 0 1 10 5c3.2 0 5.8 2.6 5.8 5.8 0 .7-.1 1.3-.3 1.9"/><path d="M10 14.5A4.5 4.5 0 0 1 5.5 10c0-.5.1-1 .2-1.4"/></svg></span></button></div>
               ${biometricSupported ? `
               <label class="login-biometric-toggle">
                 <input type="checkbox" name="enable_biometric" ${toggleChecked ? 'checked' : ''} />
@@ -74,13 +74,16 @@ export function renderLogin(container, {
   if (passwordInput && passwordToggle) {
     const showLabel = 'Mostrar senha';
     const hideLabel = 'Ocultar senha';
-    passwordToggle.addEventListener('click', () => {
+    const onTogglePassword = (event) => {
+      event.preventDefault();
       const showing = passwordInput.type === 'text';
       passwordInput.type = showing ? 'password' : 'text';
       passwordToggle.setAttribute('aria-label', showing ? showLabel : hideLabel);
       passwordToggle.setAttribute('aria-pressed', showing ? 'false' : 'true');
       passwordToggle.classList.toggle('is-visible', !showing);
-    });
+    };
+    passwordToggle.addEventListener('click', onTogglePassword);
+    passwordToggle.addEventListener('mousedown', (event) => event.preventDefault());
   }
   const feedback = formFeedback(loginForm);
   if (error) feedback.show(error);
