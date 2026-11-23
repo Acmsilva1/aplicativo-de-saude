@@ -127,7 +127,9 @@ export default async function handler(req, res) {
       return result.account
         ? res.json({
           account: result.account,
-          inviteSent: true,
+          inviteSent: result.inviteSent !== false,
+          ...(result.inviteLink ? { inviteLink: result.inviteLink } : {}),
+          ...(result.warning ? { warning: result.warning } : {}),
           ...(result.setupToken ? { setupToken: result.setupToken } : {}),
         })
         : res.status(400).json({ error: result.error || 'Conta indisponível para reenvio do link de senha.' });
@@ -138,7 +140,9 @@ export default async function handler(req, res) {
       return result.account
         ? res.status(201).json({
           account: result.account,
-          inviteSent: true,
+          inviteSent: result.inviteSent !== false,
+          ...(result.inviteLink ? { inviteLink: result.inviteLink } : {}),
+          ...(result.warning ? { warning: result.warning } : {}),
           ...(result.setupToken ? { setupToken: result.setupToken } : {}),
         })
         : res.status(400).json({ error: result.error || 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' });

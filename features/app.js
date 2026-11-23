@@ -259,22 +259,36 @@ async function navigate(module,targetId='',afterLoad){
  try{await load(module,targetId);afterLoad?.();}finally{state.loading=false;render();}
 }
 async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;if(['diets','monitor'].includes(module))state.profilesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
+async function copyInviteLink(link){
+ if(!link)return false;
+ try{await navigator.clipboard.writeText(link);return true;}catch{return false;}
+}
 async function resendPasswordLink(id){
  if(state.loading)return;
  state.loading=true;render();
  try{
   const result=await request('/api/auth?resource=account-password-link',{method:'POST',body:JSON.stringify({id})});
   state.accounts=state.accounts.map(account=>account.id===id?result.account:account);
-  state.notice={text:'Link de senha enviado para o e-mail da conta.',type:'success'};
+  if(result.inviteLink){
+   const copied=await copyInviteLink(result.inviteLink);
+   state.notice={text:copied?'E-mail SMTP falhou. Link de senha copiado — envie manualmente à pessoa.':'E-mail SMTP falhou. Copie o link de senha retornado e envie manualmente.',type:'success'};
+  }else{
+   state.notice={text:'Link de senha enviado para o e-mail da conta.',type:'success'};
+  }
  }catch(error){state.notice={text:error.message,type:'error'};}
  finally{state.loading=false;render();}
 }
 async function createAccount(payload){
  try{
-  await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
+  const result=await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
   state.accountsLoaded=false;
   await load('accounts');
-  state.notice={text:'Convite enviado para o e-mail. A pessoa define a senha pelo link recebido.',type:'success'};
+  if(result.inviteLink){
+   const copied=await copyInviteLink(result.inviteLink);
+   state.notice={text:copied?'Conta criada, mas o e-mail SMTP falhou. Link de convite copiado — envie manualmente à pessoa.':'Conta criada, mas o e-mail SMTP falhou. Use o link de convite retornado para enviar manualmente.',type:'success'};
+  }else{
+   state.notice={text:'Convite enviado para o e-mail. A pessoa define a senha pelo link recebido.',type:'success'};
+  }
   render();
  }catch(error){
   state.notice={text:error.message,type:'error'};

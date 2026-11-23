@@ -16,6 +16,19 @@ function appPublicUrl(req) {
   return 'https://controle-de-saude.duckdns.org';
 }
 
+function isAuthEmailDeliveryError(err) {
+  const msg = String(err?.message || '');
+  return /error sending invite email|error sending.*email|smtp|email rate|error sending confirmation/i.test(msg)
+    || Number(err?.status) === 500;
+}
+
+function mapAuthEmailError(err, fallback = 'Não foi possível enviar o e-mail.') {
+  if (isAuthEmailDeliveryError(err)) {
+    return 'Falha no envio de e-mail (SMTP/Resend). Confirme remetente e domínio verificados no Supabase/Resend. O remetente onboarding@resend.dev só entrega para o e-mail da conta Resend.';
+  }
+  return String(err?.message || '').trim() || fallback;
+}
+
 function publicAccount(row, professorName = '') {
   if (!row) return null;
   const out = {
@@ -327,15 +340,44 @@ export async function createAccount(payload = {}, req = null) {
   if (existing) return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
 
   const redirectTo = appPublicUrl(req);
+  let userId = null;
+  let inviteSent = false;
+  let inviteLink = null;
+
   const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(e, {
     data: { name: n, role },
     redirectTo,
   });
-  if (inviteErr || !invited?.user) {
-    return { error: inviteErr?.message || 'Não foi possível enviar o convite por e-mail.' };
+  if (!inviteErr && invited?.user) {
+    userId = invited.user.id;
+    inviteSent = true;
+  } else {
+    // SMTP pode falhar depois de criar o usuário no Auth: reaproveita o id e gera link sem e-mail.
+    if (invited?.user?.id) {
+      userId = invited.user.id;
+    }
+    let linked = null;
+    let linkErr = null;
+    ({ data: linked, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email: e,
+      options: { data: { name: n, role }, redirectTo },
+    }));
+    if ((linkErr || !linked?.properties?.action_link) && (userId || /already|registered|exists/i.test(String(linkErr?.message || '')))) {
+      ({ data: linked, error: linkErr } = await admin.auth.admin.generateLink({
+        type: 'recovery',
+        email: e,
+        options: { redirectTo },
+      }));
+    }
+    if (!userId && linked?.user?.id) userId = linked.user.id;
+    inviteLink = linked?.properties?.action_link || null;
+    if (!userId || !inviteLink) {
+      return { error: mapAuthEmailError(inviteErr || linkErr, 'Não foi possível criar o convite.') };
+    }
+    inviteSent = false;
   }
 
-  const userId = invited.user.id;
   const { error: profileErr } = await admin.from('health_user_profiles').insert({
     user_id: userId,
     nome: n,
@@ -361,7 +403,12 @@ export async function createAccount(payload = {}, req = null) {
   }
 
   const account = await loadAccount(userId);
-  return { account, inviteSent: true };
+  return {
+    account,
+    inviteSent,
+    ...(inviteLink ? { inviteLink } : {}),
+    ...(inviteSent ? {} : { warning: mapAuthEmailError(inviteErr) }),
+  };
 }
 
 const pendingPasswordResets = new Set();
@@ -379,10 +426,24 @@ export async function sendPasswordSetupEmail(id, req = null) {
     }
     const redirectTo = appPublicUrl(req);
     const { error } = await getSupabaseAnon().auth.resetPasswordForEmail(account.email, { redirectTo });
-    if (error) {
-      return { error: error.message || 'Não foi possível enviar o e-mail de definição de senha.' };
+    if (!error) {
+      return { account: { ...account, must_change_password: true }, inviteSent: true };
     }
-    return { account: { ...account, must_change_password: true }, inviteSent: true };
+    const { data: linked, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'recovery',
+      email: account.email,
+      options: { redirectTo },
+    });
+    const inviteLink = linked?.properties?.action_link || null;
+    if (linkErr || !inviteLink) {
+      return { error: mapAuthEmailError(error || linkErr, 'Não foi possível enviar o e-mail de definição de senha.') };
+    }
+    return {
+      account: { ...account, must_change_password: true },
+      inviteSent: false,
+      inviteLink,
+      warning: mapAuthEmailError(error),
+    };
   } finally {
     pendingPasswordResets.delete(id);
   }
