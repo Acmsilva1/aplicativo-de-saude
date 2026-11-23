@@ -60,12 +60,19 @@ a {
 .brand-mark {
   width: 37px;
   height: 37px;
-  color: var(--lime);
-  background: #c6de6d1a;
-  border: 1px solid #c6de6d47;
+  background: #0b1730;
+  border: 0;
   border-radius: 12px;
   place-items: center;
   display: grid;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #ff37373d;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 .brand-mark svg {
   fill: none;
@@ -2404,9 +2411,8 @@ body {
   color: #ff4a4a;
 }
 .login-story .brand-mark {
-  color: #f66;
-  background: #d000001f;
-  border-color: #ff373747;
+  background: #0b1730;
+  box-shadow: 0 0 0 1px #ff373747;
 }
 .login-story .eyebrow-dot {
   background: #f33;
@@ -2489,9 +2495,8 @@ body {
     background: #081328;
   }
   .mobile-brand .brand-mark {
-    color: #c6de6d;
-    background: #c6de6d1a;
-    border-color: #c6de6d47;
+    background: #0b1730;
+    box-shadow: 0 0 0 1px #ff373747;
   }
   .mobile-brand .brand-light {
     color: #ff7474;

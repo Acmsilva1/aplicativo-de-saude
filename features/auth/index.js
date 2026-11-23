@@ -6,7 +6,7 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
     <main class="login-layout">
       <section class="login-story" aria-label="Ritmo Saúde">
         <a class="brand brand--large" href="#inicio" aria-label="Ritmo Saúde, início">
-          <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3.5C13 9 7 14.2 7 20a9 9 0 0 0 18 0c0-5.8-6-11-9-16.5Z"/><path d="M12 21a4 4 0 0 0 4 4"/></svg></span>
+          <span class="brand-mark"><img src="/icons/health-192.png" alt="" width="42" height="42" decoding="async" /></span>
           <span>Ritmo<span class="brand-light">Saúde</span></span>
         </a>
         <div class="story-copy">
@@ -21,7 +21,7 @@ export function renderLogin(container, { onLogin, error = '' } = {}) {
         <div class="login-card">
           <header class="login-header">
             <div class="mobile-brand brand">
-              <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3.5C13 9 7 14.2 7 20a9 9 0 0 0 18 0c0-5.8-6-11-9-16.5Z"/><path d="M12 21a4 4 0 0 0 4 4"/></svg></span>
+              <span class="brand-mark" aria-hidden="true"><img src="/icons/health-192.png" alt="" width="44" height="44" decoding="async" /></span>
               <span class="mobile-brand-copy">
                 <span class="mobile-brand-name">Ritmo<span class="brand-light">Saúde</span></span>
                 <span class="eyebrow login-eyebrow">Bem-vindo de volta</span>
