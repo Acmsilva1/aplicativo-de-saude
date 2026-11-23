@@ -320,12 +320,61 @@ a {
 .password-field {
   position: relative;
 }
+.password-field input {
+  padding-right: 4.75rem;
+}
+.password-toggle {
+  color: #809087;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  justify-content: center;
+  align-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  transition: color .18s, background .18s;
+  display: inline-flex;
+  position: absolute;
+  top: 50%;
+  right: 38px;
+  transform: translateY(-50%);
+}
+.password-toggle:hover {
+  color: #5f7268;
+  background: #dfe7df66;
+}
+.password-toggle:focus-visible {
+  outline: 2px solid #6d9b79;
+  outline-offset: 2px;
+}
+.password-toggle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+.password-toggle-icon--hide {
+  display: none;
+}
+.password-toggle.is-visible .password-toggle-icon--show {
+  display: none;
+}
+.password-toggle.is-visible .password-toggle-icon--hide {
+  display: block;
+}
 .password-lock {
   color: #809087;
   position: absolute;
   top: 50%;
   right: 15px;
   transform: translateY(-50%);
+  pointer-events: none;
 }
 .password-lock svg {
   fill: none;
@@ -2566,6 +2615,16 @@ button.is-busy {
 }
 .password-lock {
   color: #b3bfd1;
+}
+.password-toggle {
+  color: #b3bfd1;
+}
+.password-toggle:hover {
+  color: #e8edf5;
+  background: #ffffff14;
+}
+.password-toggle:focus-visible {
+  outline-color: #df2828;
 }
 .login-eyebrow {
   color: #ff7474;
