@@ -297,7 +297,8 @@ export function updateDemoAccount(id, { name, email, role, professor_id, phone, 
 
 export function deleteDemoAccount(id) {
   const index = accounts.findIndex((x) => x.id === id);
-  if (index < 0 || accounts[index].role === 'admin') return { ok: false };
+  if (index < 0) return { ok: false, error: 'Conta não encontrada.' };
+  if (accounts[index].role === 'admin') return { ok: false, error: 'A conta de administração é protegida.' };
   let unlinkedStudents = 0;
   if (accounts[index].role === 'professor') {
     for (const account of accounts) {

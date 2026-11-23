@@ -28,7 +28,7 @@ create table if not exists public.health_user_roles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint health_user_roles_professor_link_check check (
-    (role = 'student' and professor_id is not null)
+    (role = 'student')
     or (role in ('admin', 'professor') and professor_id is null)
   )
 );

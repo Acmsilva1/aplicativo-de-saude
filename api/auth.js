@@ -171,7 +171,11 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Você não pode excluir a própria conta.' });
       }
       const deleted = await deleteAccount(id);
-      if (!deleted?.ok) return res.status(400).json({ error: 'Conta indisponível ou protegida.' });
+      if (!deleted?.ok) {
+        return res.status(400).json({
+          error: deleted?.error || 'Conta indisponível ou protegida.',
+        });
+      }
       await saudeStore.deleteUserData(id);
       return res.json({ ok: true, unlinkedStudents: deleted.unlinkedStudents || 0 });
     }

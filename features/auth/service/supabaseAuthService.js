@@ -608,9 +608,15 @@ export async function setAccountAccess(id, access) {
   return loadAccount(id, { includeDisabled: true });
 }
 
+function deleteFailure(error, fallback = 'Não foi possível excluir a conta.') {
+  const message = String(error?.message || error || '').trim();
+  return { ok: false, error: message || fallback };
+}
+
 export async function deleteAccount(id) {
   const current = await loadAccount(id, { includeDisabled: true });
-  if (!current || current.role === 'admin') return { ok: false };
+  if (!current) return deleteFailure(null, 'Conta não encontrada.');
+  if (current.role === 'admin') return deleteFailure(null, 'A conta de administração é protegida.');
   const admin = getSupabaseAdmin();
   let unlinkedStudents = 0;
   if (current.role === 'professor') {
@@ -621,17 +627,30 @@ export async function deleteAccount(id) {
       .eq('role', 'student')
       .eq('professor_id', id)
       .select('user_id');
-    if (unlinkErr) return { ok: false };
+    if (unlinkErr) {
+      return deleteFailure(
+        unlinkErr,
+        'Não foi possível desvincular os alunos deste professor antes da exclusão.',
+      );
+    }
     unlinkedStudents = unlinked?.length || 0;
   }
-  await admin.from('health_diet_templates').delete().eq('professor_id', id);
-  await admin.from('health_water_entries').delete().eq('user_id', id);
-  await admin.from('health_water_goals').delete().eq('user_id', id);
-  await admin.from('health_diet_items').delete().eq('user_id', id);
-  await admin.from('health_diet_meals').delete().eq('user_id', id);
-  await admin.from('health_diet_plans').delete().eq('user_id', id);
-  await admin.from('health_user_roles').delete().eq('user_id', id);
-  await admin.from('health_user_profiles').delete().eq('user_id', id);
+
+  const cleanupSteps = [
+    ['health_diet_templates', 'professor_id'],
+    ['health_water_entries', 'user_id'],
+    ['health_water_goals', 'user_id'],
+    ['health_diet_items', 'user_id'],
+    ['health_diet_meals', 'user_id'],
+    ['health_diet_plans', 'user_id'],
+    ['health_user_roles', 'user_id'],
+    ['health_user_profiles', 'user_id'],
+  ];
+  for (const [table, column] of cleanupSteps) {
+    const { error } = await admin.from(table).delete().eq(column, id);
+    if (error) return deleteFailure(error, `Falha ao limpar dados em ${table}.`);
+  }
+
   const { error } = await admin.auth.admin.deleteUser(id);
-  return error ? { ok: false } : { ok: true, unlinkedStudents };
+  return error ? deleteFailure(error, 'Falha ao remover o usuário de autenticação.') : { ok: true, unlinkedStudents };
 }
