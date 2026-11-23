@@ -1552,7 +1552,7 @@ a {
   .app-footer {
     flex-wrap: wrap;
     min-height: 46px;
-    padding: 8px 17px 78px;
+    padding: 8px 17px max(8px, env(safe-area-inset-bottom));
     font-size: 8px;
   }
   .app-footer>span:last-child {
@@ -1817,8 +1817,9 @@ body {
 }
 .app-shell {
   background: 0 0;
-  min-height: 100vh;
-  display: block;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 .app-header {
   z-index: 20;
@@ -1950,7 +1951,8 @@ body {
 .content-wrap {
   position: relative;
   background: 0 0;
-  min-height: calc(100vh - 148px);
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 14px 18px 54px;
 }
 .navigation-loading {
@@ -2268,8 +2270,10 @@ button.is-busy {
   align-items: center;
   gap: 12px;
   min-height: 42px;
+  margin-top: auto;
   display: flex;
-  padding: 10px 18px;
+  flex-shrink: 0;
+  padding: 10px 18px max(10px, env(safe-area-inset-bottom));
   font-size: 11px;
 }
 .app-footer>span:last-child {
@@ -3512,6 +3516,8 @@ button.is-busy {
 }
 .app-shell {
   min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow-x: clip;
 }
 .app-shell button,
@@ -3549,10 +3555,13 @@ button.is-busy {
   font-size: 13px;
 }
 .app-shell .content-wrap {
+  flex: 1 1 auto;
   padding-left: max(12px,env(safe-area-inset-left));
   padding-right: max(12px,env(safe-area-inset-right));
 }
 .app-shell .app-footer {
+  margin-top: auto;
+  flex-shrink: 0;
   padding-bottom: max(10px,env(safe-area-inset-bottom));
   padding-left: max(12px,env(safe-area-inset-left));
   padding-right: max(12px,env(safe-area-inset-right));
