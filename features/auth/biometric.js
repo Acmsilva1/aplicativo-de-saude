@@ -45,7 +45,23 @@ export function isBiometricPreferred() {
   return Boolean(pref?.preferred && pref?.credentialId);
 }
 
+/** Biometria só no mobile (telefone/tablet). Desktop usa e-mail e senha. */
+export function isMobileDevice() {
+  if (typeof navigator === 'undefined') return false;
+  if (typeof navigator.userAgentData?.mobile === 'boolean') {
+    return navigator.userAgentData.mobile;
+  }
+  const ua = String(navigator.userAgent || '');
+  if (/Android|iPhone|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return true;
+  // iPadOS moderno se identifica como Mac, mas tem toque.
+  if (/iPad/i.test(ua) || (navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1)) {
+    return true;
+  }
+  return false;
+}
+
 export async function supportsPlatformAuth() {
+  if (!isMobileDevice()) return false;
   if (typeof window === 'undefined' || !window.PublicKeyCredential) return false;
   if (typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== 'function') {
     return false;
