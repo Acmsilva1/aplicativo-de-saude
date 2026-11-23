@@ -3,7 +3,7 @@ import './pwa.js';
 import { createBackgroundSaves } from './backgroundSaves.js';
 import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
-import { renderPasswordChange, renderInvitePassword, renderBiometricUnlock, showWelcome } from './auth/firstAccess.js';
+import { renderPasswordChange, renderInvitePassword, renderBiometricUnlock, showWelcome, showBusyStatus } from './auth/firstAccess.js';
 import {
   assertBiometric,
   clearBiometricPreference,
@@ -15,7 +15,14 @@ import {
   writeBiometricPreference,
 } from './auth/biometric.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',loading:false,moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
+const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
+function beginLoading(title='Aguarde',detail='Carregando…'){
+ state.loading=true;state.loadingTitle=title;state.loadingDetail=detail;
+}
+function endLoading(){
+ state.loading=false;state.loadingTitle='';state.loadingDetail='';
+}
+const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false};
 let forcePasswordLogin=false;
 const INVITE_TOKENS_KEY='ritmo_invite_tokens';
 function storeInviteTokens(tokens){
@@ -139,16 +146,40 @@ async function enter(){
  const dismiss=showWelcome(state.user);
  try{
   if(!state.user.must_change_password){
-   state.loading=true;
+   beginLoading('Abrindo sua área','Carregando os dados…');
    render();
    await maybeEnrollBiometric();
    await load(initialModule());
-   state.loading=false;
+   endLoading();
   }
   render();
- }finally{state.loading=false;dismiss();}
+ }finally{endLoading();dismiss();}
 }
-async function logout(){await saves.idle();await request('/api/auth?resource=logout',{method:'POST',body:'{}'});Object.assign(state,{user:null,module:'users',loading:false,accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false});forcePasswordLogin=false;bootAuth();}
+async function logout(){
+ if(state.loading)return;
+ const inApp=Boolean(state.user&&!state.user.must_change_password);
+ let dismiss=()=>{};
+ if(inApp){
+  beginLoading('Saindo','Encerrando sua sessão…');
+  render();
+ }else{
+  dismiss=showBusyStatus({title:'Saindo',detail:'Encerrando sua sessão…'});
+ }
+ try{
+  await saves.idle();
+  await request('/api/auth?resource=logout',{method:'POST',body:'{}'});
+  Object.assign(state,{...emptySessionState});
+  forcePasswordLogin=false;
+  dismiss();
+  await bootAuth();
+ }catch(error){
+  endLoading();
+  dismiss();
+  state.notice={text:error.message||'Não foi possível sair. Tente novamente.',type:'error'};
+  if(state.user?.must_change_password)passwordChange(error.message);
+  else render();
+ }
+}
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
 function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:isBiometricPreferred(),onLogin:async({email,password,enableBiometric})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
@@ -195,16 +226,35 @@ function invitePassword(tokens,error=''){
  }});
 }
 async function bootAuth(){
- state.biometricSupported=await supportsPlatformAuth();
- if(!forcePasswordLogin&&isBiometricPreferred()&&state.biometricSupported){
-  biometricAuth();
-  return;
- }
+ const dismiss=showBusyStatus({title:'Carregando',detail:'Verificando sua sessão…'});
  try{
-  state.user=(await request('/api/auth?resource=session')).user;
-  if(!state.user.must_change_password)await load(initialModule());
-  render();
- }catch{auth();}
+  state.biometricSupported=await supportsPlatformAuth();
+  if(!forcePasswordLogin&&isBiometricPreferred()&&state.biometricSupported){
+   dismiss();
+   biometricAuth();
+   return;
+  }
+  try{
+   state.user=(await request('/api/auth?resource=session')).user;
+   if(!state.user.must_change_password){
+    beginLoading('Abrindo sua área','Carregando os dados…');
+    dismiss();
+    try{
+     render();
+     await load(initialModule());
+    }finally{endLoading();}
+   }else dismiss();
+   render();
+  }catch{
+   endLoading();
+   dismiss();
+   auth();
+  }
+ }catch{
+  endLoading();
+  dismiss();
+  auth();
+ }
 }
 async function load(module,targetId=''){
  const userId=['diet-detail','editDiet'].includes(module)?state.selectedUserId:(targetId||state.selectedUserId);
@@ -273,18 +323,32 @@ async function load(module,targetId=''){
 }
 async function navigate(module,targetId='',afterLoad){
  if(state.loading)return;
- state.loading=true;
+ beginLoading('Abrindo sua área','Carregando os dados…');
  render();
- try{await load(module,targetId);afterLoad?.();}finally{state.loading=false;render();}
+ try{await load(module,targetId);afterLoad?.();}finally{endLoading();render();}
 }
-async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){if(state.loading)return;state.loading=true;render();try{await work();if(module==='accounts')state.accountsLoaded=false;if(module==='portfolio')state.templatesLoaded=false;if(['diets','monitor'].includes(module))state.profilesLoaded=false;await load(module,targetId);state.notice={text:successNotice,type:'success'};}catch(e){state.notice={text:e.message,type:'error'};}finally{state.loading=false;render();}}
+async function action(work,module='users',targetId='',successNotice='Tudo certo! Alteração salva.'){
+ if(state.loading)return;
+ beginLoading('Salvando','Aguarde um instante…');
+ render();
+ try{
+  await work();
+  if(module==='accounts')state.accountsLoaded=false;
+  if(module==='portfolio')state.templatesLoaded=false;
+  if(['diets','monitor'].includes(module))state.profilesLoaded=false;
+  await load(module,targetId);
+  state.notice={text:successNotice,type:'success'};
+ }catch(e){state.notice={text:e.message,type:'error'};}
+ finally{endLoading();render();}
+}
 async function copyInviteLink(link){
  if(!link)return false;
  try{await navigator.clipboard.writeText(link);return true;}catch{return false;}
 }
 async function resendPasswordLink(id){
  if(state.loading)return;
- state.loading=true;render();
+ beginLoading('Enviando link','Preparando o e-mail de senha…');
+ render();
  try{
   const result=await request('/api/auth?resource=account-password-link',{method:'POST',body:JSON.stringify({id})});
   state.accounts=state.accounts.map(account=>account.id===id?result.account:account);
@@ -297,9 +361,12 @@ async function resendPasswordLink(id){
    state.notice={text:result.warning||'Não foi possível enviar o link de senha.',type:'error'};
   }
  }catch(error){state.notice={text:error.message,type:'error'};}
- finally{state.loading=false;render();}
+ finally{endLoading();render();}
 }
 async function createAccount(payload){
+ if(state.loading)return;
+ beginLoading('Criando conta','Enviando o convite por e-mail…');
+ render();
  try{
   const result=await request('/api/auth?resource=accounts',{method:'POST',body:JSON.stringify(payload)});
   state.accountsLoaded=false;
@@ -312,11 +379,9 @@ async function createAccount(payload){
   }else{
    state.notice={text:result.warning||'Conta criada, mas o convite não foi enviado.',type:'error'};
   }
-  render();
  }catch(error){
   state.notice={text:error.message,type:'error'};
-  render();
- }
+ }finally{endLoading();render();}
 }
 function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();app.dataset.module=state.module;renderSaudeContent(app,{state,
  onNavigate:navigate,

@@ -79,7 +79,8 @@ export function renderLogin(container, {
     if (!password.value) { feedback.show('Informe sua senha.', password); return; }
     const button = loginForm.querySelector('.login-submit');
     button.disabled = true;
-    button.querySelector('span').textContent = 'Entrando…';
+    button.classList.add('is-busy');
+    button.innerHTML = '<span class="button-busy-label"><span class="button-busy-spinner" aria-hidden="true"></span><span>Entrando…</span></span><span aria-hidden="true">↗</span>';
     loginForm.setAttribute('aria-busy', 'true');
     try {
       await onLogin?.({
@@ -88,7 +89,12 @@ export function renderLogin(container, {
         enableBiometric,
       });
     } catch (cause) { feedback.show(authErrorMessage(cause)); }
-    finally { button.disabled = false; button.querySelector('span').textContent = 'Entrar'; loginForm.removeAttribute('aria-busy'); }
+    finally {
+      button.disabled = false;
+      button.classList.remove('is-busy');
+      button.innerHTML = '<span>Entrar</span><span aria-hidden="true">↗</span>';
+      loginForm.removeAttribute('aria-busy');
+    }
   });
 }
 

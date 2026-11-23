@@ -608,15 +608,32 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   } else content = renderStudentHome(state);
 
   ensureWaterDropStyles();
-  const moduleNav = homeActive ? '' : `<nav class="module-nav module-nav--home-only" aria-label="Navegação"><button type="button" class="home-return-button" data-module="${homeModule}" aria-label="Início" title="Início"><span aria-hidden="true">🏠</span></button></nav>`;
-  container.innerHTML = `<main class="app-shell"><header class="app-header"><div class="header-brand"><span class="header-heart">♥</span> RITMO <strong>SAÚDE</strong></div><div class="header-account"><span>${esc(state.user?.name || view.label)}</span><small>${view.label}</small><button type="button" data-action="logout">Sair</button></div></header>
+  const loadingTitle = esc(state.loadingTitle || 'Abrindo sua área');
+  const loadingDetail = esc(state.loadingDetail || 'Carregando os dados…');
+  const logoutLabel = state.loading && /sair/i.test(state.loadingTitle || '') ? 'Saindo…' : 'Sair';
+  const moduleNav = homeActive ? '' : `<nav class="module-nav module-nav--home-only" aria-label="Navegação"><button type="button" class="home-return-button" data-module="${homeModule}" aria-label="Início" title="Início"${state.loading ? ' disabled' : ''}><span aria-hidden="true">🏠</span></button></nav>`;
+  container.innerHTML = `<main class="app-shell"${state.loading ? ' aria-busy="true"' : ''}><header class="app-header"><div class="header-brand"><span class="header-heart">♥</span> RITMO <strong>SAÚDE</strong></div><div class="header-account"><span>${esc(state.user?.name || view.label)}</span><small>${view.label}</small><button type="button" data-action="logout"${state.loading ? ' disabled class="is-busy"' : ''}>${state.loading && /sair/i.test(state.loadingTitle || '') ? '<span class="button-busy-spinner" aria-hidden="true"></span><span>Saindo…</span>' : logoutLabel}</button></div></header>
     ${moduleNav}
-    <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.pendingSaves ? '<div class="background-save-status" role="status" aria-live="polite">Salvando alterações…</div>' : ''}${state.loading ? '<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>Abrindo sua área</strong><small>Carregando os dados…</small></span></span></div>' : ''}${renderNotice()}${content}</div></main>`;
+    <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.pendingSaves ? '<div class="background-save-status" role="status" aria-live="polite">Salvando alterações…</div>' : ''}${state.loading ? `<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>${loadingTitle}</strong><small>${loadingDetail}</small></span></span></div>` : ''}${renderNotice()}${content}</div></main>`;
 
   container.querySelectorAll('button[data-id^="pending-"]').forEach(button => {
     button.disabled = true;
     button.title = 'Salvando…';
   });
+  if (state.loading) {
+    container.querySelectorAll('button, input, select, textarea').forEach((el) => {
+      if (el.dataset.action === 'logout') return;
+      el.disabled = true;
+    });
+    const submit = container.querySelector('[data-account-form] button[type="submit"], [data-diet-editor] button[type="submit"], [data-water-goal] button[type="submit"]');
+    if (submit) {
+      submit.classList.add('is-busy');
+      const label = /criar conta/i.test(state.loadingTitle || '') ? 'Criando conta…'
+        : /enviando link/i.test(state.loadingTitle || '') ? 'Enviando…'
+        : 'Salvando…';
+      submit.innerHTML = `<span class="button-busy-spinner" aria-hidden="true"></span><span>${label}</span>`;
+    }
+  }
   if (state.notice) {
     const pendingNotice = state.notice;
     state.notice = '';
@@ -784,10 +801,20 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   container.querySelectorAll('[data-delete-account]').forEach((button) => button.addEventListener('click', async () => {
     if (await confirmAction('O usuário perderá o acesso à plataforma.', { title: 'Excluir esta conta?', confirmLabel: 'Excluir conta' })) onDeleteAccount?.(button.dataset.id);
   }));
-  container.querySelectorAll('[data-action="add-water"]').forEach((button) => button.addEventListener('click', () => onWaterAmount?.(Number(button.dataset.id))));
+  container.querySelectorAll('[data-action="add-water"]').forEach((button) => button.addEventListener('click', () => {
+    button.disabled = true;
+    button.classList.add('is-busy');
+    onWaterAmount?.(Number(button.dataset.id));
+  }));
   container.querySelector('[data-water-goal]')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget;
+    const saveBtn = form.querySelector('button[type="submit"]');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.classList.add('is-busy');
+      saveBtn.innerHTML = '<span class="button-busy-spinner" aria-hidden="true"></span><span>Salvando…</span>';
+    }
     const values = new FormData(form);
     const amount = Number(values.get('goal_ml'));
     state.waterGoalName = String(values.get('nome') || '').trim();
@@ -806,6 +833,12 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   container.querySelector('[data-diet-editor]')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
+    const saveBtn = formElement.querySelector('button[type="submit"]');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.classList.add('is-busy');
+      saveBtn.innerHTML = '<span class="button-busy-spinner" aria-hidden="true"></span><span>Salvando…</span>';
+    }
     const form = new FormData(formElement);
     const weekly = String(form.get('formato')) === 'weekly';
     const buildMeals = (dayKey = '') => DIET_MEALS.map((meal) => ({

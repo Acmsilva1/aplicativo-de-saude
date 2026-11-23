@@ -17,7 +17,8 @@ function bindPasswordForm(form, feedback, { submitLabel, onSubmit }) {
     }
     const button = form.querySelector('button[type="submit"]');
     button.disabled = true;
-    button.textContent = 'Salvando senha…';
+    button.classList.add('is-busy');
+    button.innerHTML = '<span class="button-busy-spinner" aria-hidden="true"></span><span>Salvando senha…</span>';
     form.setAttribute('aria-busy', 'true');
     try {
       await onSubmit(password.value);
@@ -25,6 +26,7 @@ function bindPasswordForm(form, feedback, { submitLabel, onSubmit }) {
       feedback.show(authErrorMessage(cause));
     } finally {
       button.disabled = false;
+      button.classList.remove('is-busy');
       button.textContent = submitLabel;
       form.removeAttribute('aria-busy');
     }
@@ -56,8 +58,21 @@ export function renderPasswordChange(container, { user, error = '', onSubmit, on
   const logout = document.createElement('button');
   logout.type = 'button';
   logout.className = 'button';
+  logout.dataset.action = 'logout';
   logout.textContent = 'Sair';
-  logout.addEventListener('click', onLogout);
+  logout.addEventListener('click', async () => {
+    if (logout.disabled) return;
+    logout.disabled = true;
+    logout.classList.add('is-busy');
+    logout.innerHTML = '<span class="button-busy-spinner" aria-hidden="true"></span><span>Saindo…</span>';
+    try {
+      await onLogout?.();
+    } catch {
+      logout.disabled = false;
+      logout.classList.remove('is-busy');
+      logout.textContent = 'Sair';
+    }
+  });
   card.append(form, logout);
   shell.append(card);
   container.replaceChildren(shell);
@@ -115,13 +130,17 @@ export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePa
   unlockBtn.addEventListener('click', async () => {
     showError('');
     unlockBtn.disabled = true;
-    unlockBtn.textContent = 'Aguardando biometria…';
+    unlockBtn.classList.add('is-busy');
+    unlockBtn.innerHTML = '<span class="button-busy-spinner" aria-hidden="true"></span><span>Aguardando biometria…</span>';
+    unlockBtn.setAttribute('aria-busy', 'true');
     try {
       await onUnlock?.();
     } catch (cause) {
       showError(authErrorMessage(cause));
     } finally {
       unlockBtn.disabled = false;
+      unlockBtn.classList.remove('is-busy');
+      unlockBtn.removeAttribute('aria-busy');
       unlockBtn.textContent = 'Usar digital ou Face ID';
     }
   });
@@ -129,6 +148,38 @@ export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePa
   shell.append(card);
   container.replaceChildren(shell);
   queueMicrotask(() => unlockBtn.click());
+}
+
+/** Overlay leve de ocupado (logout, boot, ações longas fora do app-shell). */
+export function showBusyStatus({ title = 'Aguarde', detail = 'Carregando…' } = {}) {
+  document.querySelector('.app-busy-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'app-busy-overlay';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+  overlay.setAttribute('aria-busy', 'true');
+  const card = document.createElement('span');
+  card.className = 'navigation-loading__card';
+  const spinner = document.createElement('span');
+  spinner.className = 'navigation-loading__spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  const copy = document.createElement('span');
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  const text = document.createElement('small');
+  text.textContent = detail;
+  copy.append(heading, text);
+  card.append(spinner, copy);
+  overlay.append(card);
+  document.body.append(overlay);
+  const app = document.querySelector('#app');
+  app?.setAttribute('aria-busy', 'true');
+  return () => {
+    overlay.remove();
+    if (!document.querySelector('.login-welcome, .app-busy-overlay')) {
+      app?.removeAttribute('aria-busy');
+    }
+  };
 }
 
 export function showWelcome(user) {
@@ -154,6 +205,8 @@ export function showWelcome(user) {
   return () => {
     overlay.remove();
     app?.removeAttribute('inert');
-    app?.removeAttribute('aria-busy');
+    if (!document.querySelector('.app-busy-overlay')) {
+      app?.removeAttribute('aria-busy');
+    }
   };
 }
