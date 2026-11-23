@@ -4492,9 +4492,7 @@ body {
   z-index: 70;
   position: fixed;
   inset: 0;
-  display: grid;
-  align-items: end;
-  justify-items: stretch;
+  display: block;
 }
 .saude-drill-sheet[hidden] {
   display: none !important;
@@ -4505,25 +4503,32 @@ body {
   margin: 0;
   padding: 0;
   border: 0;
-  background: #0107189e;
+  background: #01071866;
   cursor: pointer;
 }
 .saude-drill-sheet__panel {
+  --saude-drill-panel-top: 30vh;
+  --saude-drill-panel-left: 50%;
+  --saude-drill-panel-width: min(100% - 1.5rem, 26rem);
   z-index: 1;
-  position: relative;
+  position: fixed;
+  top: var(--saude-drill-panel-top);
+  left: var(--saude-drill-panel-left);
   box-sizing: border-box;
-  width: min(100%, 32rem);
-  max-height: min(78dvh, 34rem);
-  margin: 0 auto;
-  padding: 0 0 max(.35rem, env(safe-area-inset-bottom));
+  width: var(--saude-drill-panel-width);
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(60dvh, 28rem);
+  margin: 0;
+  padding: 0;
   border: 1px solid #dce1e8;
-  border-radius: .9rem .9rem 0 0;
+  border-radius: .85rem;
   background: #fff;
   color: #142033;
-  box-shadow: 0 -12px 36px #00000040;
+  box-shadow: 0 18px 40px #0000004d;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+  transform-origin: top center;
 }
 .saude-drill-sheet__header {
   display: flex;
@@ -4594,18 +4599,6 @@ body {
 .saude-selection-drill.is-disabled {
   opacity: .72;
   pointer-events: none;
-}
-@media (width>=720px) {
-  .saude-drill-sheet {
-    align-items: center;
-    justify-items: center;
-    padding: 1rem;
-  }
-  .saude-drill-sheet__panel {
-    width: min(100%, 26rem);
-    border-radius: .85rem;
-    max-height: min(70dvh, 32rem);
-  }
 }
 .saude-diet-modal .saude-student-picker {
   max-width: none;
@@ -4709,7 +4702,7 @@ body {
   .app-shell .saude-drill-trigger { min-height:44px; padding:.65rem .8rem; gap:.55rem; }
   .app-shell .saude-drill-trigger__label { font-size:.68rem; }
   .app-shell .saude-drill-trigger__value { font-size:.88rem; }
-  .app-shell .saude-drill-sheet__panel { width:100%; max-width:100%; border-radius:.9rem .9rem 0 0; }
+  .app-shell .saude-drill-sheet__panel { border-radius:.85rem; max-height:min(58dvh,26rem); }
   .app-shell .saude-drill-sheet__header { padding:.8rem .9rem .65rem; }
   .app-shell .saude-drill-sheet__header h2 { font-size:.95rem; }
   .app-shell .saude-drill-list { --saude-drill-row:44px; }

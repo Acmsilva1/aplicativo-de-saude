@@ -609,6 +609,27 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   }));
 
   container.querySelectorAll('[data-module]').forEach((button) => button.addEventListener('click', () => onNavigate?.(button.dataset.module)));
+  const positionDrillPanel = (drill) => {
+    const toggle = drill.querySelector('[data-student-drill-toggle]');
+    const panel = drill.querySelector('.saude-drill-sheet__panel');
+    if (!toggle || !panel) return;
+    const rect = toggle.getBoundingClientRect();
+    const gutter = 12;
+    const width = Math.min(Math.max(rect.width, 240), window.innerWidth - gutter * 2);
+    let left = rect.left + (rect.width - width) / 2;
+    left = Math.min(Math.max(left, gutter), window.innerWidth - width - gutter);
+    panel.style.setProperty('--saude-drill-panel-width', `${Math.round(width)}px`);
+    panel.style.setProperty('--saude-drill-panel-left', `${Math.round(left)}px`);
+    panel.style.removeProperty('--saude-drill-panel-top');
+    const panelHeight = Math.min(panel.scrollHeight || 280, window.innerHeight * 0.6, 448);
+    const below = rect.bottom + 8;
+    const above = rect.top - 8 - panelHeight;
+    const fitsBelow = below + panelHeight <= window.innerHeight - gutter;
+    const fitsAbove = above >= gutter;
+    let top = fitsBelow ? below : (fitsAbove ? above : Math.max(gutter, (window.innerHeight - panelHeight) / 2));
+    top = Math.min(Math.max(top, gutter), window.innerHeight - Math.min(panelHeight, window.innerHeight - gutter * 2) - gutter);
+    panel.style.setProperty('--saude-drill-panel-top', `${Math.round(top)}px`);
+  };
   const setDrillOpen = (drill, open, { restoreFocus = true } = {}) => {
     if (!drill) return;
     const sheet = drill.querySelector('[data-student-drill-sheet]');
@@ -623,6 +644,8 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     sheet.hidden = !open;
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {
+      positionDrillPanel(drill);
+      requestAnimationFrame(() => positionDrillPanel(drill));
       const selected = sheet.querySelector('.saude-drill-option.is-selected') || sheet.querySelector('.saude-drill-option');
       selected?.focus?.();
     } else if (restoreFocus) {
@@ -645,6 +668,11 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     event.preventDefault();
     setDrillOpen(openDrill, false);
   };
+  const onDrillReposition = () => {
+    container.querySelectorAll('[data-student-drill].is-open').forEach((drill) => positionDrillPanel(drill));
+  };
+  window.addEventListener('resize', onDrillReposition);
+  window.addEventListener('scroll', onDrillReposition, true);
   container.addEventListener('keydown', onDrillKeydown);
   container.querySelectorAll('[data-student-choice]').forEach((button) => button.addEventListener('click', () => {
     setDrillOpen(button.closest('[data-student-drill]'), false);
