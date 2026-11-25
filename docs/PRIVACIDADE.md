@@ -11,11 +11,14 @@ Texto simples também aparece no app (login e rodapé → Privacidade).
 ## O que você pode fazer no app
 
 - Baixar um PDF com seus dados
-- Apagar sua conta (com confirmação de senha). Conta de administrador é protegida.
+
+## Apagar dados ou conta
+
+Não há exclusão pelo próprio usuário no app. Quem quiser apagar dados ou a conta deve **procurar o administrador do piloto**.
 
 ## Por quanto tempo
 
-Enquanto a conta estiver ativa. Depois de apagar, os dados saem do sistema; pode restar cópia de segurança por até 30 dias.
+Enquanto a conta estiver ativa. Depois que o administrador apagar a conta, os dados saem do sistema; pode restar cópia de segurança por até 30 dias.
 
 ## Ajuda
 

@@ -17,7 +17,6 @@ import {
   verifyWebAuthnLogin,
   listWebAuthnCredentials,
   revokeWebAuthnCredential,
-  verifyAccountPassword,
 } from '../features/auth/service/authService.js';
 import { appMetrics } from '../lib/observability.js';
 import { saudeStore } from '../features/saude/data/saudeStore.js';
@@ -150,28 +149,6 @@ export default async function handler(req, res) {
         ? res.status(400).json({ error: bundle.error })
         : res.json(bundle);
     }
-    if (resource === 'privacy-erase' && req.method === 'POST') {
-      if (user.must_change_password) {
-        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
-      }
-      if (user.role === 'admin') {
-        return res.status(400).json({ error: 'A conta de administração é protegida. Peça exclusão por outro canal.' });
-      }
-      const password = String(req.body?.password || '');
-      if (!password) return res.status(400).json({ error: 'Confirme com sua senha para excluir a conta.' });
-      const verified = await verifyAccountPassword(user.email, password);
-      if (!verified || String(verified.id) !== String(user.id)) {
-        return res.status(401).json({ error: 'Senha incorreta. Exclusão cancelada.' });
-      }
-      const deleted = await deleteAccount(user.id);
-      if (!deleted?.ok) {
-        return res.status(400).json({ error: deleted?.error || 'Não foi possível excluir a conta.' });
-      }
-      await saudeStore.deleteUserData(user.id);
-      await clearSession(req, res);
-      return res.json({ ok: true });
-    }
-
     if (user.must_change_password) {
       return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
     }

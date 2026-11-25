@@ -16,9 +16,7 @@ function closePrivacyModal(dialog) {
 /** Modal discreto de privacidade (overlay), com X para fechar. */
 export function openPrivacyModal({
   canExport = false,
-  canErase = false,
   onExport,
-  onErase,
 } = {}) {
   document.querySelector('dialog.privacy-modal')?.remove();
 
@@ -30,9 +28,6 @@ export function openPrivacyModal({
   const actions = [];
   if (canExport) {
     actions.push('<button type="button" class="saude-btn saude-btn--primary" data-privacy-export>Baixar PDF dos meus dados</button>');
-  }
-  if (canErase) {
-    actions.push('<button type="button" class="saude-btn" data-privacy-erase>Excluir minha conta</button>');
   }
 
   dialog.innerHTML = `
@@ -68,9 +63,6 @@ export function openPrivacyModal({
   });
   dialog.querySelector('[data-privacy-export]')?.addEventListener('click', async () => {
     try { await onExport?.(); } finally { finish(); }
-  });
-  dialog.querySelector('[data-privacy-erase]')?.addEventListener('click', async () => {
-    await onErase?.();
   });
 
   dialog.showModal();

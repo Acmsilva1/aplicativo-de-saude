@@ -21,7 +21,7 @@ import {
 } from './saude/data/dietCache.js';
 import { openPrivacyModal } from './privacy/index.js';
 import { openPrivacyExportPdf } from './privacy/privacyExportPdf.js';
-import { confirmAction, showToast } from './saude/service/uiConfirmation.js';
+import { showToast } from './saude/service/uiConfirmation.js';
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
@@ -352,11 +352,8 @@ function passwordChange(error=''){renderPasswordChange(app,{user:state.user,erro
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
 function openPrivacy(){
  const loggedIn=Boolean(state.user)&&!state.user.must_change_password;
- const canExport=loggedIn;
- const canErase=canExport&&state.user.role!=='admin';
  openPrivacyModal({
-  canExport,
-  canErase,
+  canExport:loggedIn,
   onExport:async()=>{
    try{
     const bundle=await request('/api/auth?resource=privacy-export');
@@ -365,28 +362,6 @@ function openPrivacy(){
     showToast('Na próxima tela, escolha Salvar como PDF.');
    }catch(e){
     showToast(e.message||'Falha na exportação.',{type:'error'});
-   }
-  },
-  onErase:async()=>{
-   const password=window.prompt('Digite sua senha para confirmar a exclusão definitiva da conta e dos dados de saúde:');
-   if(password==null)return;
-   if(!String(password).trim()){
-    showToast('Exclusão cancelada: senha obrigatória.',{type:'error'});
-    return;
-   }
-   const accepted=await confirmAction(
-    'Isso apaga dieta, água, avaliações corporais e a conta. Não dá para desfazer.',
-    {title:'Excluir minha conta?',confirmLabel:'Excluir definitivamente',tone:'danger'},
-   );
-   if(!accepted)return;
-   try{
-    await request('/api/auth?resource=privacy-erase',{method:'POST',body:JSON.stringify({password})});
-    document.querySelector('dialog.privacy-modal')?.remove();
-    clearAllClientHealthCaches();
-    Object.assign(state,{...emptySessionState});
-    auth('Conta e dados excluídos a seu pedido.');
-   }catch(e){
-    showToast(e.message||'Não foi possível excluir.',{type:'error'});
    }
   },
  });

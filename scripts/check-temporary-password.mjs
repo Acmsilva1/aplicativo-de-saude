@@ -62,7 +62,6 @@ const api = vm.createContext({
   recordLoginFailure() {},
   clearLoginAttempts() {},
   exportPrivacyBundle: async () => ({ error: 'n/a' }),
-  verifyAccountPassword: async () => null,
   getWebAuthnRegisterOptions: async () => ({}),
   verifyWebAuthnRegistration: async () => ({}),
   getWebAuthnLoginOptions: async () => ({}),

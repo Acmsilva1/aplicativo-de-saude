@@ -11,14 +11,13 @@ export const PRIVACY_SUMMARY = [
 export const PRIVACY_RIGHTS = [
   'Ver e baixar em PDF os dados que temos sobre você.',
   'Pedir correção se algo estiver errado (fale com o administrador ou com seu professor).',
-  'Apagar sua conta e os dados de saúde pelo botão abaixo (exceto conta de administrador).',
   'Saber quem vê o quê: seu professor vê dieta, água e avaliações; o administrador cuida das contas, sem abrir seus dados de saúde pelo app.',
-  'Tirar dúvidas sobre privacidade com o administrador do piloto.',
+  'Se quiser apagar seus dados ou a conta, fale com o administrador do piloto — isso não é feito por este botão.',
 ];
 
 export const PRIVACY_RETENTION = [
   'Seus dados ficam enquanto sua conta estiver ativa.',
-  'Se você apagar a conta, removemos cadastro, dieta, água e avaliações. Pode restar uma cópia de segurança por até 30 dias.',
+  'Se a conta for apagada pelo administrador, cadastro, dieta, água e avaliações são removidos. Pode restar uma cópia de segurança por até 30 dias.',
 ].join(' ');
 
-export const PRIVACY_CONTACT = 'Para baixar ou apagar seus dados, use os botões abaixo. Se precisar de ajuda, fale com o administrador do piloto.';
+export const PRIVACY_CONTACT = 'Para baixar seus dados, use o botão abaixo. Para apagar dados ou a conta, procure o administrador do piloto.';
