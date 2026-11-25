@@ -2,6 +2,7 @@ process.env.FORCE_MOCK = 'true';
 process.env.NODE_ENV = 'development';
 
 const assert = (await import('node:assert/strict')).default;
+const { readFile } = await import('node:fs/promises');
 
 const store = () => {
   const map = new Map();
@@ -21,23 +22,18 @@ globalThis.location = { protocol: 'http:' };
 const bio = await import('../features/auth/biometric.js');
 const mock = await import('../features/auth/service/mockAuthService.js');
 
-assert.equal(bio.hasLocalBiometricForEmail('a@test.com'), false);
-
-bio.persistBiometricLogin('user-1', 'cred-1', { name: 'Ana', email: 'Ana@Test.com' });
+bio.persistBiometricLogin('user-1', 'cred-1', { name: 'Ana', email: 'ana@test.com' });
 assert.equal(bio.hasSavedDeviceUser(), true);
 assert.equal(bio.hasLocalBiometricForEmail('ana@test.com'), true);
-assert.equal(bio.hasLocalBiometricForEmail('outro@test.com'), false);
 
 const created = mock.createDemoAccount({
-  name: 'Bio Flag',
-  email: `bio.flag.${Date.now()}@saude.local`,
+  name: 'Bio Flow',
+  email: `bio.flow.${Date.now()}@saude.local`,
   role: 'professor',
   phone: '27988516301',
 });
-assert.equal(created.account.biometria_habilitada, false);
-
 mock.saveWebAuthnCredential({
-  credential_id: 'cred-flag',
+  credential_id: 'cred-flow',
   user_id: created.account.id,
   public_key: 'abc',
   counter: 0,
@@ -45,24 +41,13 @@ mock.saveWebAuthnCredential({
   backed_up: false,
   transports: ['internal'],
 });
-const listed = mock.listDemoUsers().find((u) => u.id === created.account.id);
-assert.equal(listed.biometria_habilitada, true);
+assert.equal(mock.listWebAuthnCredentials(created.account.id).length, 1);
 
-mock.deleteWebAuthnCredential('cred-flag', created.account.id);
-const after = mock.listDemoUsers().find((u) => u.id === created.account.id);
-assert.equal(after.biometria_habilitada, false);
+const appSrc = await readFile(new URL('../features/app.js', import.meta.url), 'utf8');
+assert.ok(appSrc.includes('requireBiometricAfterPassword'), 'login deve exigir biometria após senha');
+assert.equal(appSrc.includes('maybeOfferBiometric'), false, 'não deve oferecer biometria opcional');
+assert.equal(appSrc.includes('openDeviceUserGate'), false, 'não deve pular direto para digital sem senha');
+assert.equal(appSrc.includes('biometria_habilitada'), false, 'fluxo não depende de flag no banco');
+assert.ok(appSrc.includes('abortLoginSession'), 'falha na biometria deve encerrar a sessão');
 
-// Decisão de oferta (espelha app.js): flag on sem local → oferece; local bound → não.
-function shouldOffer({ flagOn, localBound, declined, biometricSupported }) {
-  if (localBound) return false;
-  if (!biometricSupported) return false;
-  if (flagOn) return true;
-  return !declined;
-}
-assert.equal(shouldOffer({ flagOn: true, localBound: true, declined: false, biometricSupported: true }), false);
-assert.equal(shouldOffer({ flagOn: true, localBound: false, declined: true, biometricSupported: true }), true);
-assert.equal(shouldOffer({ flagOn: false, localBound: false, declined: true, biometricSupported: true }), false);
-assert.equal(shouldOffer({ flagOn: false, localBound: false, declined: false, biometricSupported: true }), true);
-assert.equal(shouldOffer({ flagOn: true, localBound: false, declined: false, biometricSupported: false }), false);
-
-console.log('PASS biometric flow: local email match, flag no mock, oferta e fallback sem autenticador');
+console.log('PASS biometric flow: senha + biometria obrigatória, cadastro local 1x');

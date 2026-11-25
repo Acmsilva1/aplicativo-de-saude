@@ -3,20 +3,15 @@ import './pwa.js';
 import { createBackgroundSaves } from './backgroundSaves.js';
 import { renderLogin } from './auth/index.js';
 import { renderSaudeContent } from './saude/index.js';
-import { renderPasswordChange, renderInvitePassword, renderBiometricUnlock, renderTrialExpired, showWelcome, showBusyStatus } from './auth/firstAccess.js';
+import { renderPasswordChange, renderInvitePassword, renderTrialExpired, showWelcome, showBusyStatus } from './auth/firstAccess.js';
 import {
   assertBiometric,
-  clearBiometricPreference,
   enrollBiometric,
-  hasDeclinedBiometricOffer,
-  hasSavedDeviceUser,
-  markBiometricOfferDeclined,
+  isMobileDevice,
   persistBiometricLogin,
   readBiometricPreference,
-  revokeBiometric,
   supportsPlatformAuth,
 } from './auth/biometric.js';
-import { confirmAction } from './saude/service/uiConfirmation.js';
 import {
   clearDietCacheForUser,
   dietsHaveStructure,
@@ -24,15 +19,14 @@ import {
   writeDietsCache,
 } from './saude/data/dietCache.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false,pendingBiometricOffer:false,biometricSupported:false};
+const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
  state.loading=true;state.loadingTitle=title;state.loadingDetail=detail;
 }
 function endLoading(){
  state.loading=false;state.loadingTitle='';state.loadingDetail='';
 }
-const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false,pendingBiometricOffer:false};
-let forcePasswordLogin=false;
+const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:''};
 const INVITE_TOKENS_KEY='ritmo_invite_tokens';
 function storeInviteTokens(tokens){
  try{sessionStorage.setItem(INVITE_TOKENS_KEY,JSON.stringify(tokens));}catch{/* private mode */}
@@ -228,12 +222,9 @@ function isCancelBiometricError(error){
 function rememberBiometricUser(credentialId){
  persistBiometricLogin(state.user.id,credentialId,state.user);
 }
-async function reuseExistingBiometricCredential(){
+async function resolveLocalCredentialId(){
  const pref=readBiometricPreference();
- if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
-  rememberBiometricUser(pref.credentialId);
-  return pref.credentialId;
- }
+ if(pref?.credentialId&&String(pref.userId)===String(state.user.id))return pref.credentialId;
  if(pref?.credentialId&&!pref.userId){
   rememberBiometricUser(pref.credentialId);
   return pref.credentialId;
@@ -246,63 +237,53 @@ async function reuseExistingBiometricCredential(){
    return existing;
   }
  }catch{
-  /* sem credencial no servidor — segue para cadastro único */
+  /* sem credencial — cadastra uma vez */
  }
  return '';
 }
-async function activateBiometricForCurrentUser({busyTitle='Ativando biometria',busyDetail='Confirme a digital ou o Face ID…'}={}){
- if(!state.user||!state.biometricSupported||state.user.must_change_password)return false;
- // Já existe chave neste aparelho/conta: só marca como login principal (nunca cria de novo).
- const reused=await reuseExistingBiometricCredential();
- if(reused){
-  state.notice={text:'Biometria pronta neste aparelho.',type:'success'};
-  return true;
+/** Após e-mail/senha: biometria obrigatória no mobile (cadastro 1x; depois só confirma). */
+async function requireBiometricAfterPassword(){
+ if(!state.user||state.user.must_change_password)return;
+ if(!isMobileDevice()){
+  state.biometricSupported=false;
+  return;
  }
- const dismiss=showBusyStatus({title:busyTitle,detail:busyDetail});
+ state.biometricSupported=await supportsPlatformAuth();
+ if(!state.biometricSupported){
+  throw Error('Ative a digital ou o Face ID nas configurações do aparelho para entrar.');
+ }
+ const existingId=await resolveLocalCredentialId();
+ const dismiss=showBusyStatus({
+  title:existingId?'Confirme a biometria':'Cadastre a biometria',
+  detail:'Use a digital ou o Face ID para continuar…',
+ });
  try{
+  if(existingId){
+   try{
+    state.user=(await assertBiometric(request,existingId)).user;
+    rememberBiometricUser(existingId);
+    return;
+   }catch(error){
+    if(isCancelBiometricError(error)){
+     throw Error('Biometria obrigatória. Confirme a digital ou o Face ID para entrar.');
+    }
+    // Credencial de outro aparelho / inválida → cadastra neste aparelho (uma vez).
+   }
+  }
   const result=await enrollBiometric(request);
   rememberBiometricUser(result.credentialId);
-  state.notice={text:'Biometria ativada neste aparelho.',type:'success'};
-  return true;
  }catch(error){
   if(isCancelBiometricError(error)){
-   state.notice={text:'Biometria não ativada. Você pode ligar no próximo login.',type:'error'};
-   return false;
+   throw Error('Biometria obrigatória. Confirme a digital ou o Face ID para entrar.');
   }
-  state.notice={text:error?.message||'Não foi possível ativar a biometria.',type:'error'};
-  return false;
+  throw error;
  }finally{
   dismiss();
  }
 }
-async function maybeOfferBiometric(){
- if(!state.pendingBiometricOffer||!state.user||state.user.must_change_password)return;
- state.pendingBiometricOffer=false;
- if(!state.biometricSupported)return;
- const pref=readBiometricPreference();
- // Já vinculada neste aparelho → nunca pergunta de novo.
- if(pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false)return;
- const flagOn=state.user.biometria_habilitada===true;
- if(flagOn){
-  // Flag ativa sem credencial local (celular novo / reinstalação): oferece recadastro.
-  const accepted=await confirmAction(
-   'Sua conta já usa biometria. Cadastre a digital ou o Face ID neste aparelho para entrar sem digitar senha.',
-   {title:'Recadastrar digital neste aparelho?',confirmLabel:'Cadastrar agora',tone:'primary'},
-  );
-  if(accepted)await activateBiometricForCurrentUser();
-  return;
- }
- // Primeiro cadastro: só pergunta se a flag ainda não está ativa.
- if(hasDeclinedBiometricOffer(state.user.id))return;
- const accepted=await confirmAction(
-  'Nos próximos acessos (ao sair ou expirar a sessão) você entra só com a digital ou o Face ID — sem digitar e-mail e senha.',
-  {title:'Usar digital ou Face ID?',confirmLabel:'Ativar biometria',tone:'primary'},
- );
- if(!accepted){
-  markBiometricOfferDeclined(state.user.id);
-  return;
- }
- await activateBiometricForCurrentUser();
+async function abortLoginSession(){
+ try{await request('/api/auth?resource=logout',{method:'POST',body:'{}'});}catch{/* ignore */}
+ Object.assign(state,{...emptySessionState,biometricSupported:state.biometricSupported});
 }
 async function enter(){
  const dismiss=showWelcome(state.user);
@@ -314,7 +295,6 @@ async function enter(){
   if(!state.user.must_change_password){
    beginLoading('Abrindo sua área','Carregando os dados…');
    render();
-   await maybeOfferBiometric();
    await load(initialModule());
    endLoading();
   }
@@ -335,7 +315,6 @@ async function logout(){
   await flushWaterBuffer();
   await saves.idle();
   const previousUserId=state.user?.id;
-  // Garante nome/e-mail do usuário prioritário antes de derrubar a sessão.
   const pref=readBiometricPreference();
   if(pref?.credentialId&&state.user&&String(pref.userId||previousUserId)===String(state.user.id)){
    rememberBiometricUser(pref.credentialId);
@@ -343,16 +322,9 @@ async function logout(){
   await request('/api/auth?resource=logout',{method:'POST',body:'{}'});
   if(previousUserId)clearDietCacheForUser(previousUserId);
   Object.assign(state,{...emptySessionState});
-  forcePasswordLogin=false;
   endLoading();
   dismiss();
-  // Credencial local + digital disponível no SO → tela da biometria.
-  // Se a digital/Face ID estiver desligada no aparelho → fallback e-mail/senha (flag no banco permanece).
-  if(hasSavedDeviceUser()){
-   await openBiometricOrPasswordFallback();
-   return;
-  }
-  await bootAuth();
+  auth();
 }catch(error){
   endLoading();
   dismiss();
@@ -362,106 +334,33 @@ async function logout(){
   else render();
  }
 }
-function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
+function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{
+ state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;
+ await requireBiometricAfterPassword();
+ await enter();
+}});}
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
-function decideBiometricOfferAfterPasswordLogin(){
- const pref=readBiometricPreference();
- const alreadyBound=pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false;
- if(alreadyBound){
-  rememberBiometricUser(pref.credentialId);
-  state.pendingBiometricOffer=false;
-  return;
- }
- // Sem autenticador no aparelho (digital/Face ID desligado) → só senha; flag no banco não muda.
- if(!state.biometricSupported||state.user.must_change_password){
-  state.pendingBiometricOffer=false;
-  return;
- }
- const flagOn=state.user.biometria_habilitada===true;
- // Flag off → oferta de 1º cadastro (respeita "não, obrigado").
- // Flag on sem local → oferta de recadastro neste aparelho.
- if(flagOn){
-  state.pendingBiometricOffer=true;
-  return;
- }
- state.pendingBiometricOffer=!hasDeclinedBiometricOffer(state.user.id);
-}
-function passwordFallbackAuth(error=''){
- const pref=readBiometricPreference();
- forcePasswordLogin=true;
- auth(error,{prefillEmail:pref?.userEmail||''});
-}
-async function openBiometricOrPasswordFallback(error=''){
- state.biometricSupported=await supportsPlatformAuth();
- if(state.biometricSupported&&hasSavedDeviceUser()){
-  openDeviceUserGate(error);
-  return;
- }
- // Digital/Face ID indisponível no SO → login e senha; vínculo no banco permanece.
- passwordFallbackAuth(error||'Digital ou Face ID indisponível neste aparelho. Entre com e-mail e senha.');
-}
-function auth(error='',{prefillEmail=''}={}){renderLogin(app,{
- error,
- prefillEmail,
- onKnownDeviceUser:async()=>{
-  if(!hasSavedDeviceUser())return;
-  state.biometricSupported=await supportsPlatformAuth();
-  if(!state.biometricSupported)return; // fica no formulário de senha
-  openDeviceUserGate();
- },
- onLogin:async({email,password})=>{
+function auth(error=''){renderLogin(app,{error,onLogin:async({email,password})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
-  state.pendingBiometricEnroll=false;
-  decideBiometricOfferAfterPasswordLogin();
-  forcePasswordLogin=false;
+  try{
+   await requireBiometricAfterPassword();
+  }catch(cause){
+   await abortLoginSession();
+   throw cause;
+  }
   await enter();
- },
-});}
-function openDeviceUserGate(error=''){
- biometricAuth(error);
-}
-function biometricAuth(error=''){
- const pref=readBiometricPreference();
- renderBiometricUnlock(app,{
-  error,
-  autoStart:true,
-  userName:pref?.userName||'',
-  userEmail:pref?.userEmail||'',
-  onUsePassword:()=>{
-   // Fallback senha sem apagar a digital local nem a flag no banco.
-   passwordFallbackAuth();
-  },
-  onChangeUser:()=>{
-   // Mantém a credencial local: ao digitar o mesmo e-mail de novo, volta à digital (se o SO permitir).
-   forcePasswordLogin=true;
-   auth();
-  },
-  onUnlock:async()=>{
-   const credentialId=readBiometricPreference()?.credentialId||pref?.credentialId;
-   if(!credentialId)throw Error('Ative a biometria pelo login com senha.');
-   try{
-    state.user=(await assertBiometric(request,credentialId)).user;
-    rememberBiometricUser(credentialId);
-   }catch(cause){
-    if(/não encontrada|nao encontrada|indisponível|indisponivel/i.test(String(cause?.message||''))){
-     clearBiometricPreference();
-    }
-    // Autenticador desligado/cancelado: deixa usar "Entrar com senha" sem perder o vínculo.
-    if(isCancelBiometricError(cause)){
-     throw Error('Biometria indisponível ou cancelada. Use Entrar com senha.');
-    }
-    throw cause;
-   }
-   forcePasswordLogin=false;
-   await enter();
-  },
- });
-}
+}});}
 function invitePassword(tokens,error=''){
  renderInvitePassword(app,{error,onCancel:()=>{clearAuthRedirect();clearInviteTokens();auth();},onSubmit:async password=>{
   state.user=(await request('/api/auth?resource=complete-invite',{method:'POST',body:JSON.stringify({...tokens,password})})).user;
   clearAuthRedirect();
   clearInviteTokens();
+  try{
+   await requireBiometricAfterPassword();
+  }catch(cause){
+   await abortLoginSession();
+   throw cause;
+  }
   await enter();
  }});
 }
@@ -470,7 +369,7 @@ async function bootAuth(){
  try{
   state.biometricSupported=await supportsPlatformAuth();
   try{
-   // Sessão ainda ativa → entra direto, sem pedir biometria de novo.
+   // Sessão ainda ativa → entra direto (biometria só no login com senha).
    state.user=(await request('/api/auth?resource=session')).user;
    if(state.user.trial_expired){
     dismiss();
@@ -489,20 +388,11 @@ async function bootAuth(){
   }catch{
    endLoading();
    dismiss();
-   // Sem sessão: tenta digital se houver credencial local e autenticador no SO; senão senha.
-   if(!forcePasswordLogin&&hasSavedDeviceUser()){
-    await openBiometricOrPasswordFallback();
-    return;
-   }
    auth();
   }
  }catch{
   endLoading();
   dismiss();
-  if(!forcePasswordLogin&&hasSavedDeviceUser()){
-   await openBiometricOrPasswordFallback();
-   return;
-  }
   auth();
  }
 }

@@ -73,18 +73,6 @@ async function getCredential(credentialId) {
   return data || null;
 }
 
-async function setBiometriaHabilitada(userId, enabled) {
-  if (useMockData() || !userId) return;
-  try {
-    await getSupabaseAdmin()
-      .from('health_user_profiles')
-      .update({ biometria_habilitada: Boolean(enabled) })
-      .eq('user_id', userId);
-  } catch {
-    /* coluna pode ainda não existir em ambientes sem a migration */
-  }
-}
-
 async function saveCredential(row) {
   if (useMockData()) {
     mock.saveWebAuthnCredential(row);
@@ -108,24 +96,16 @@ async function saveCredential(row) {
     updated_at: new Date().toISOString(),
   });
   if (error) throw error;
-  await setBiometriaHabilitada(row.user_id, true);
 }
 
 async function deleteCredential(credentialId, userId) {
-  if (useMockData()) {
-    mock.deleteWebAuthnCredential(credentialId, userId);
-    const remaining = mock.listWebAuthnCredentials(userId);
-    if (!remaining.length) await setBiometriaHabilitada(userId, false);
-    return true;
-  }
+  if (useMockData()) return mock.deleteWebAuthnCredential(credentialId, userId);
   const { error } = await getSupabaseAdmin()
     .from('health_webauthn_credentials')
     .delete()
     .eq('credential_id', credentialId)
     .eq('user_id', userId);
   if (error) throw error;
-  const remaining = await listCredentials(userId);
-  await setBiometriaHabilitada(userId, remaining.length > 0);
   return true;
 }
 
