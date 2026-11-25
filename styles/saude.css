@@ -5430,10 +5430,12 @@ details[open] > summary .ui-chevron--fold {
   box-sizing: border-box;
   width: min(92vw, 22rem);
   max-width: calc(100vw - 24px);
-  max-height: min(78dvh, 32rem);
+  max-height: min(82dvh, 34rem);
   margin: auto;
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 18px 40px #00000038;
 }
 .privacy-modal::backdrop {
@@ -5446,6 +5448,8 @@ details[open] > summary .ui-chevron--fold {
   gap: .5rem;
   padding: .7rem .75rem .45rem;
   border-bottom: 1px solid #e6eaef;
+  flex: 0 0 auto;
+  background: #f7f8fa;
 }
 .privacy-modal__eyebrow {
   display: block;
@@ -5461,6 +5465,7 @@ details[open] > summary .ui-chevron--fold {
   font-size: .88rem;
   line-height: 1.25;
   letter-spacing: -.01em;
+  color: #152033;
 }
 .privacy-modal__close {
   appearance: none;
@@ -5477,33 +5482,41 @@ details[open] > summary .ui-chevron--fold {
 }
 .privacy-modal__close:hover,
 .privacy-modal__close:focus-visible {
-  background: #e8edf3;
+  background: #dce3ec;
   color: #182433;
   outline: none;
 }
 .privacy-modal__body {
-  padding: .55rem .75rem .7rem;
+  padding: .65rem .8rem .75rem;
   overflow: auto;
-  max-height: min(48dvh, 18rem);
-  font-size: .72rem;
-  line-height: 1.45;
-  color: #4b5a6c;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
+  font-size: .78rem;
+  line-height: 1.5;
+  color: #243246;
 }
-.privacy-modal__lead { margin: 0 0 .65rem; font-size: .73rem; line-height: 1.45; }
+.privacy-modal__lead {
+  margin: 0 0 .7rem;
+  font-size: .8rem;
+  line-height: 1.5;
+  color: #1b2430;
+}
 .privacy-modal__label {
-  margin: .55rem 0 .2rem;
-  font-size: .68rem;
+  margin: .65rem 0 .25rem;
+  font-size: .7rem;
   font-weight: 700;
   letter-spacing: .02em;
   text-transform: uppercase;
-  color: #2d3a4a;
+  color: #152033;
 }
 .privacy-modal__list {
   margin: 0;
-  padding-left: 1rem;
+  padding-left: 1.05rem;
+  color: #243246;
 }
-.privacy-modal__list li + li { margin-top: .2rem; }
-.privacy-modal__body p { margin: 0; }
+.privacy-modal__list li + li { margin-top: .28rem; }
+.privacy-modal__body p { margin: 0; color: #243246; }
 .privacy-modal__actions {
   display: flex;
   flex-wrap: wrap;
@@ -5511,6 +5524,7 @@ details[open] > summary .ui-chevron--fold {
   padding: .55rem .7rem .7rem;
   border-top: 1px solid #e6eaef;
   background: #fff;
+  flex: 0 0 auto;
 }
 .privacy-modal__actions > button {
   flex: 1 1 8rem;

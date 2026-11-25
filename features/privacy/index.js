@@ -38,25 +38,19 @@ export function openPrivacyModal({
   dialog.innerHTML = `
     <header class="privacy-modal__head">
       <div>
-        <span class="privacy-modal__eyebrow">LGPD</span>
+        <span class="privacy-modal__eyebrow">Privacidade</span>
         <h2 id="privacy-modal-title">${escapeHtml(PRIVACY_TITLE)}</h2>
       </div>
       <button type="button" class="privacy-modal__close" data-privacy-close aria-label="Fechar">×</button>
     </header>
     <div class="privacy-modal__body">
-      <p class="privacy-modal__lead">Seus dados de saúde são usados para o acompanhamento nutricional do piloto. Consulte os detalhes ou escolha uma opção abaixo.</p>
-      <details class="privacy-modal__details">
-        <summary>Tratamento, direitos e retenção</summary>
-        <div class="privacy-modal__details-content">
-          <p>${escapeHtml(PRIVACY_SUMMARY)}</p>
+      <p class="privacy-modal__lead">${escapeHtml(PRIVACY_SUMMARY)}</p>
       <p class="privacy-modal__label">O que você pode fazer</p>
       <ul class="privacy-modal__list">${rights}</ul>
       <p class="privacy-modal__label">Por quanto tempo guardamos</p>
       <p>${escapeHtml(PRIVACY_RETENTION)}</p>
       <p class="privacy-modal__label">Ajuda</p>
-          <p>${escapeHtml(PRIVACY_CONTACT)}</p>
-        </div>
-      </details>
+      <p>${escapeHtml(PRIVACY_CONTACT)}</p>
     </div>
     ${actions.length ? `<div class="privacy-modal__actions">${actions.join('')}</div>` : ''}
   `;
@@ -76,7 +70,6 @@ export function openPrivacyModal({
     try { await onExport?.(); } finally { finish(); }
   });
   dialog.querySelector('[data-privacy-erase]')?.addEventListener('click', async () => {
-    // Mantém o modal aberto até o fluxo de exclusão decidir (prompt/confirmação).
     await onErase?.();
   });
 
