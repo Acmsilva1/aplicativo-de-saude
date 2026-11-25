@@ -33,9 +33,9 @@ const professorId = 'demo-professor';
 const inviteTokens = new Map();
 
 const accounts = [
-  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: false, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '', trial_started_at: DEMO_TRIAL_STARTED, sexo: null, data_nascimento: null, altura_cm: null },
-  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: false, name: 'Professor Demo', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001', trial_started_at: DEMO_TRIAL_STARTED, sexo: 'male', data_nascimento: '1985-03-10', altura_cm: 175 },
-  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: false, name: 'André Aluno', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002', trial_started_at: DEMO_TRIAL_STARTED, sexo: 'male', data_nascimento: '1992-06-15', altura_cm: 178 },
+  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: false, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '', trial_started_at: DEMO_TRIAL_STARTED, sexo: null, data_nascimento: null, altura_cm: null, biometria_habilitada: false },
+  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: false, name: 'Professor Demo', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001', trial_started_at: DEMO_TRIAL_STARTED, sexo: 'male', data_nascimento: '1985-03-10', altura_cm: 175, biometria_habilitada: false },
+  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: false, name: 'André Aluno', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002', trial_started_at: DEMO_TRIAL_STARTED, sexo: 'male', data_nascimento: '1992-06-15', altura_cm: 178, biometria_habilitada: false },
 ];
 for (const [id, name, email, sexo, data_nascimento, altura_cm] of [
   ['demo-student-ana', 'Ana', 'ana@saude.local', 'female', '1995-08-22', 165],
@@ -43,7 +43,7 @@ for (const [id, name, email, sexo, data_nascimento, altura_cm] of [
   ['demo-student-carla', 'Carla', 'carla@saude.local', 'female', '1998-01-30', 162],
   ['demo-student-diego', 'Diego', 'diego@saude.local', 'male', '1990-04-18', 180],
 ]) {
-  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: false, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '', trial_started_at: DEMO_TRIAL_STARTED, sexo, data_nascimento, altura_cm });
+  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: false, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '', trial_started_at: DEMO_TRIAL_STARTED, sexo, data_nascimento, altura_cm, biometria_habilitada: false });
 }
 
 const sessions = new Map();
@@ -159,6 +159,7 @@ export function createDemoAccount({ name, email, role, professor_id, phone, tele
     sexo: body.sexo,
     data_nascimento: body.data_nascimento,
     altura_cm: body.altura_cm,
+    biometria_habilitada: false,
   };
   accounts.push(account);
   const setupToken = issueSetupToken(account.id);
@@ -255,12 +256,18 @@ export function saveWebAuthnCredential(row) {
     }
   }
   webauthnCredentials.set(row.credential_id, { ...row });
+  const account = accounts.find((x) => x.id === row.user_id);
+  if (account) account.biometria_habilitada = true;
 }
 
 export function deleteWebAuthnCredential(credentialId, userId) {
   const current = webauthnCredentials.get(credentialId);
   if (!current || current.user_id !== userId) return false;
   webauthnCredentials.delete(credentialId);
+  if (!listWebAuthnCredentials(userId).length) {
+    const account = accounts.find((x) => x.id === userId);
+    if (account) account.biometria_habilitada = false;
+  }
   return true;
 }
 

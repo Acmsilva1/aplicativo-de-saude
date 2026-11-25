@@ -154,6 +154,7 @@ export function renderBiometricUnlock(container, {
   userEmail = '',
   onUnlock,
   onChangeUser,
+  onUsePassword,
   autoStart = false,
 } = {}) {
   const shell = document.createElement('main');
@@ -173,6 +174,7 @@ export function renderBiometricUnlock(container, {
     <p class="biometric-unlock-copy">Confirme com a digital ou o Face ID para entrar. Não vamos pedir para criar chave de novo.</p>
     <div class="auth-feedback" role="alert" hidden><span></span></div>
     <button type="button" class="button button--primary" data-biometric-unlock>Entrar com digital ou Face ID</button>
+    <button type="button" class="biometric-change-user" data-biometric-use-password>Entrar com senha</button>
     <button type="button" class="biometric-change-user" data-biometric-change-user>Mudar usuário</button>
   `;
   const alertBox = card.querySelector('.auth-feedback');
@@ -204,6 +206,7 @@ export function renderBiometricUnlock(container, {
     }
   };
   unlockBtn.addEventListener('click', runUnlock);
+  card.querySelector('[data-biometric-use-password]').addEventListener('click', () => onUsePassword?.());
   card.querySelector('[data-biometric-change-user]').addEventListener('click', () => onChangeUser?.());
   shell.append(card);
   container.replaceChildren(shell);

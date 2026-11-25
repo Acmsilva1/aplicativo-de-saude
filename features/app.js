@@ -10,7 +10,6 @@ import {
   enrollBiometric,
   hasDeclinedBiometricOffer,
   hasSavedDeviceUser,
-  isMobileDevice,
   markBiometricOfferDeclined,
   persistBiometricLogin,
   readBiometricPreference,
@@ -280,9 +279,20 @@ async function maybeOfferBiometric(){
  if(!state.pendingBiometricOffer||!state.user||state.user.must_change_password)return;
  state.pendingBiometricOffer=false;
  if(!state.biometricSupported)return;
- // Já tem usuário padrão neste aparelho para esta conta → não pergunta de novo.
  const pref=readBiometricPreference();
+ // Já vinculada neste aparelho → nunca pergunta de novo.
  if(pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false)return;
+ const flagOn=state.user.biometria_habilitada===true;
+ if(flagOn){
+  // Flag ativa sem credencial local (celular novo / reinstalação): oferece recadastro.
+  const accepted=await confirmAction(
+   'Sua conta já usa biometria. Cadastre a digital ou o Face ID neste aparelho para entrar sem digitar senha.',
+   {title:'Recadastrar digital neste aparelho?',confirmLabel:'Cadastrar agora',tone:'primary'},
+  );
+  if(accepted)await activateBiometricForCurrentUser();
+  return;
+ }
+ // Primeiro cadastro: só pergunta se a flag ainda não está ativa.
  if(hasDeclinedBiometricOffer(state.user.id))return;
  const accepted=await confirmAction(
   'Nos próximos acessos (ao sair ou expirar a sessão) você entra só com a digital ou o Face ID — sem digitar e-mail e senha.',
@@ -336,10 +346,10 @@ async function logout(){
   forcePasswordLogin=false;
   endLoading();
   dismiss();
-  // Com usuário padrão salvo, Sair volta direto para biometria (não para e-mail/senha).
+  // Credencial local + digital disponível no SO → tela da biometria.
+  // Se a digital/Face ID estiver desligada no aparelho → fallback e-mail/senha (flag no banco permanece).
   if(hasSavedDeviceUser()){
-   state.biometricSupported=await supportsPlatformAuth()||isMobileDevice();
-   openDeviceUserGate();
+   await openBiometricOrPasswordFallback();
    return;
   }
   await bootAuth();
@@ -354,23 +364,59 @@ async function logout(){
 }
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
-function auth(error=''){renderLogin(app,{error,onLogin:async({email,password})=>{
+function decideBiometricOfferAfterPasswordLogin(){
+ const pref=readBiometricPreference();
+ const alreadyBound=pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false;
+ if(alreadyBound){
+  rememberBiometricUser(pref.credentialId);
+  state.pendingBiometricOffer=false;
+  return;
+ }
+ // Sem autenticador no aparelho (digital/Face ID desligado) → só senha; flag no banco não muda.
+ if(!state.biometricSupported||state.user.must_change_password){
+  state.pendingBiometricOffer=false;
+  return;
+ }
+ const flagOn=state.user.biometria_habilitada===true;
+ // Flag off → oferta de 1º cadastro (respeita "não, obrigado").
+ // Flag on sem local → oferta de recadastro neste aparelho.
+ if(flagOn){
+  state.pendingBiometricOffer=true;
+  return;
+ }
+ state.pendingBiometricOffer=!hasDeclinedBiometricOffer(state.user.id);
+}
+function passwordFallbackAuth(error=''){
+ const pref=readBiometricPreference();
+ forcePasswordLogin=true;
+ auth(error,{prefillEmail:pref?.userEmail||''});
+}
+async function openBiometricOrPasswordFallback(error=''){
+ state.biometricSupported=await supportsPlatformAuth();
+ if(state.biometricSupported&&hasSavedDeviceUser()){
+  openDeviceUserGate(error);
+  return;
+ }
+ // Digital/Face ID indisponível no SO → login e senha; vínculo no banco permanece.
+ passwordFallbackAuth(error||'Digital ou Face ID indisponível neste aparelho. Entre com e-mail e senha.');
+}
+function auth(error='',{prefillEmail=''}={}){renderLogin(app,{
+ error,
+ prefillEmail,
+ onKnownDeviceUser:async()=>{
+  if(!hasSavedDeviceUser())return;
+  state.biometricSupported=await supportsPlatformAuth();
+  if(!state.biometricSupported)return; // fica no formulário de senha
+  openDeviceUserGate();
+ },
+ onLogin:async({email,password})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
   state.pendingBiometricEnroll=false;
-  // Sem flag na tela: após e-mail/senha, oferece biometria (padrão do app no mobile).
-  const pref=readBiometricPreference();
-  const alreadyBound=pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false;
-  if(alreadyBound){
-   rememberBiometricUser(pref.credentialId);
-   state.pendingBiometricOffer=false;
-  }else if(state.biometricSupported&&!state.user.must_change_password){
-   state.pendingBiometricOffer=true;
-  }else{
-   state.pendingBiometricOffer=false;
-  }
+  decideBiometricOfferAfterPasswordLogin();
   forcePasswordLogin=false;
   await enter();
-}});}
+ },
+});}
 function openDeviceUserGate(error=''){
  biometricAuth(error);
 }
@@ -381,8 +427,12 @@ function biometricAuth(error=''){
   autoStart:true,
   userName:pref?.userName||'',
   userEmail:pref?.userEmail||'',
+  onUsePassword:()=>{
+   // Fallback senha sem apagar a digital local nem a flag no banco.
+   passwordFallbackAuth();
+  },
   onChangeUser:()=>{
-   clearBiometricPreference();
+   // Mantém a credencial local: ao digitar o mesmo e-mail de novo, volta à digital (se o SO permitir).
    forcePasswordLogin=true;
    auth();
   },
@@ -395,6 +445,10 @@ function biometricAuth(error=''){
    }catch(cause){
     if(/não encontrada|nao encontrada|indisponível|indisponivel/i.test(String(cause?.message||''))){
      clearBiometricPreference();
+    }
+    // Autenticador desligado/cancelado: deixa usar "Entrar com senha" sem perder o vínculo.
+    if(isCancelBiometricError(cause)){
+     throw Error('Biometria indisponível ou cancelada. Use Entrar com senha.');
     }
     throw cause;
    }
@@ -435,10 +489,9 @@ async function bootAuth(){
   }catch{
    endLoading();
    dismiss();
-   // Sem sessão: se há usuário padrão no aparelho, pede biometria; senão, e-mail/senha.
-   if(!forcePasswordLogin&&hasSavedDeviceUser()&&(state.biometricSupported||isMobileDevice())){
-    state.biometricSupported=true;
-    openDeviceUserGate();
+   // Sem sessão: tenta digital se houver credencial local e autenticador no SO; senão senha.
+   if(!forcePasswordLogin&&hasSavedDeviceUser()){
+    await openBiometricOrPasswordFallback();
     return;
    }
    auth();
@@ -446,9 +499,8 @@ async function bootAuth(){
  }catch{
   endLoading();
   dismiss();
-  if(!forcePasswordLogin&&hasSavedDeviceUser()&&(state.biometricSupported||isMobileDevice())){
-   state.biometricSupported=true;
-   openDeviceUserGate();
+  if(!forcePasswordLogin&&hasSavedDeviceUser()){
+   await openBiometricOrPasswordFallback();
    return;
   }
   auth();

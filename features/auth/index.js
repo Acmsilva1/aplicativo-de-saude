@@ -1,6 +1,8 @@
 import { formFeedback, authErrorMessage } from './formFeedback.js';
 import {
+  hasLocalBiometricForEmail,
   hasSavedDeviceUser,
+  normalizeLoginEmail,
   readBiometricPreference,
   supportsPlatformAuth,
 } from './biometric.js';
@@ -10,9 +12,12 @@ import appInfo from '../../package.json';
 
 export function renderLogin(container, {
   onLogin,
+  onKnownDeviceUser,
   error = '',
+  prefillEmail = '',
 } = {}) {
   const pref = readBiometricPreference();
+  const initialEmail = normalizeLoginEmail(prefillEmail);
   container.innerHTML = `
     <main class="login-layout">
       <section class="login-story" aria-label="Ritmo Saúde">
@@ -60,8 +65,10 @@ export function renderLogin(container, {
     </main>`;
 
   const loginForm = container.querySelector('#login-form');
+  const emailInput = container.querySelector('#email');
   const passwordInput = container.querySelector('#password');
   const passwordToggle = container.querySelector('.password-toggle');
+  if (initialEmail && emailInput) emailInput.value = initialEmail;
   if (passwordInput && passwordToggle) {
     const showLabel = 'Mostrar senha';
     const hideLabel = 'Ocultar senha';
@@ -75,6 +82,17 @@ export function renderLogin(container, {
     };
     passwordToggle.addEventListener('click', onTogglePassword);
     passwordToggle.addEventListener('mousedown', (event) => event.preventDefault());
+  }
+  // Só ao digitar: se o e-mail já tem digital neste aparelho, pula direto para a biometria.
+  // Prefill (fallback senha) não dispara sozinho — o usuário consegue digitar a senha.
+  if (emailInput && typeof onKnownDeviceUser === 'function') {
+    const maybeJumpToBiometric = () => {
+      const email = normalizeLoginEmail(emailInput.value);
+      if (!email || !hasLocalBiometricForEmail(email)) return;
+      onKnownDeviceUser(email);
+    };
+    emailInput.addEventListener('input', maybeJumpToBiometric);
+    emailInput.addEventListener('change', maybeJumpToBiometric);
   }
   const feedback = formFeedback(loginForm);
   if (error) feedback.show(error);

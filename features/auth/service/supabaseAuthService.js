@@ -6,7 +6,7 @@ import { isStrongPassword } from '../../../lib/passwordPolicy.js';
 import { sendAuthLinkEmail } from '../../../lib/mailer.js';
 import { buildTrialFields } from '../../../lib/trial.js';
 
-const PROFILE_BODY_SELECT = 'user_id, nome, email, telefone, trial_started_at, sexo, data_nascimento, altura_cm';
+const PROFILE_BODY_SELECT = 'user_id, nome, email, telefone, trial_started_at, sexo, data_nascimento, altura_cm, biometria_habilitada';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
@@ -49,6 +49,7 @@ function publicAccount(row, professorName = '') {
     sexo: row.sexo || null,
     data_nascimento: row.data_nascimento || null,
     altura_cm: row.altura_cm == null || row.altura_cm === '' ? null : Number(row.altura_cm),
+    biometria_habilitada: row.biometria_habilitada === true,
     ...buildTrialFields({ role: row.role, trial_started_at: row.trial_started_at }),
   };
   if (out.role === 'student' && out.professor_id && professorName) {
@@ -117,6 +118,7 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
     sexo: profile?.sexo || null,
     data_nascimento: profile?.data_nascimento || null,
     altura_cm: profile?.altura_cm ?? null,
+    biometria_habilitada: profile?.biometria_habilitada === true,
   }, professorName);
 }
 
@@ -378,6 +380,7 @@ export async function listUsers() {
       sexo: profile.sexo || null,
       data_nascimento: profile.data_nascimento || null,
       altura_cm: profile.altura_cm ?? null,
+      biometria_habilitada: profile.biometria_habilitada === true,
     }, professorNames.get(role.professor_id) || '');
   });
 }

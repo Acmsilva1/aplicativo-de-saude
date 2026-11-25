@@ -108,6 +108,10 @@ export function clearBiometricPreference() {
   clearCookie();
 }
 
+export function normalizeLoginEmail(email = '') {
+  return String(email || '').trim().toLowerCase();
+}
+
 /** Tem credencial neste aparelho e não foi desligada de propósito. */
 export function isBiometricPreferred() {
   const pref = readBiometricPreference();
@@ -119,6 +123,15 @@ export function isBiometricPreferred() {
 /** Usuário padrão salvo no aparelho (login prioritário estilo app bancário). */
 export function hasSavedDeviceUser() {
   return isBiometricPreferred();
+}
+
+/** Credencial local vinculada a este e-mail (mesmo após "Mudar usuário"). */
+export function hasLocalBiometricForEmail(email = '') {
+  const pref = readBiometricPreference();
+  if (!pref?.credentialId || pref.preferred === false) return false;
+  const saved = normalizeLoginEmail(pref.userEmail);
+  if (!saved) return false;
+  return saved === normalizeLoginEmail(email);
 }
 
 export function hasDeclinedBiometricOffer(userId = '') {
