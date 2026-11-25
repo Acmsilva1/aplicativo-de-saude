@@ -1,6 +1,7 @@
 import { randomUUID, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { useMockData } from '../../../lib/env.js';
 import { normalizeBrazilPhone } from '../../../lib/phone.js';
+import { normalizeProfileBodyFields } from '../../../lib/profileBody.js';
 import { isStrongPassword, STRONG_PASSWORD_ERROR } from '../../../lib/passwordPolicy.js';
 import { buildTrialFields } from '../../../lib/trial.js';
 
@@ -126,7 +127,7 @@ function resolveProfessorId(role, professor_id) {
   return id;
 }
 
-export function createDemoAccount({ name, email, role, professor_id, phone, telefone }) {
+export function createDemoAccount({ name, email, role, professor_id, phone, telefone, sexo, data_nascimento, altura_cm }) {
   const n = String(name || '').trim().slice(0, 80);
   const e = String(email || '').trim().toLowerCase();
   const phoneResult = normalizeBrazilPhone(phone || telefone);
@@ -134,6 +135,8 @@ export function createDemoAccount({ name, email, role, professor_id, phone, tele
     return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
   }
   if (phoneResult.error) return { error: phoneResult.error };
+  const body = normalizeProfileBodyFields({ sexo, data_nascimento, altura_cm }, { required: role === 'student' });
+  if (body.error) return { error: body.error };
   const linkId = resolveProfessorId(role, professor_id);
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
@@ -151,6 +154,9 @@ export function createDemoAccount({ name, email, role, professor_id, phone, tele
     access: true,
     professor_id: linkId,
     trial_started_at: null,
+    sexo: body.sexo,
+    data_nascimento: body.data_nascimento,
+    altura_cm: body.altura_cm,
   };
   accounts.push(account);
   const setupToken = issueSetupToken(account.id);
@@ -270,7 +276,7 @@ export function clearDemoSession(req, res) {
   res.clearCookie('ritmo_saude_demo', { httpOnly: true, sameSite: 'strict', secure: isSecureCookie(req), path: '/' });
 }
 
-export function updateDemoAccount(id, { name, email, role, professor_id, phone, telefone }) {
+export function updateDemoAccount(id, { name, email, role, professor_id, phone, telefone, sexo, data_nascimento, altura_cm }) {
   const a = accounts.find((x) => x.id === id);
   if (!a) return { error: 'Conta não encontrada.' };
   const n = String(name || '').trim().slice(0, 80);
@@ -281,10 +287,20 @@ export function updateDemoAccount(id, { name, email, role, professor_id, phone, 
   if (a.role === 'admin' && role !== 'admin') return { error: 'O perfil da Administração é protegido.' };
   if (a.role !== 'admin' && !['professor', 'student'].includes(role)) return { error: 'Perfil inválido.' };
   let phoneValue = a.phone || '';
+  let body = { sexo: a.sexo ?? null, data_nascimento: a.data_nascimento ?? null, altura_cm: a.altura_cm ?? null };
   if (a.role !== 'admin' && role !== 'admin') {
     const phoneResult = normalizeBrazilPhone(phone || telefone || a.phone);
     if (phoneResult.error) return { error: phoneResult.error };
     phoneValue = phoneResult.phone;
+    body = normalizeProfileBodyFields(
+      {
+        sexo: sexo ?? a.sexo,
+        data_nascimento: data_nascimento ?? a.data_nascimento,
+        altura_cm: altura_cm ?? a.altura_cm,
+      },
+      { required: role === 'student' },
+    );
+    if (body.error) return { error: body.error };
   }
   if (role === 'student') {
     const linkId = resolveProfessorId(role, professor_id ?? a.professor_id);
@@ -300,6 +316,11 @@ export function updateDemoAccount(id, { name, email, role, professor_id, phone, 
     phone: role === 'admin' ? a.phone : phoneValue,
     role,
     role_label: role === 'admin' ? 'Administrador' : role === 'professor' ? 'Professor' : 'Aluno',
+    ...(role === 'admin' ? {} : {
+      sexo: body.sexo,
+      data_nascimento: body.data_nascimento,
+      altura_cm: body.altura_cm,
+    }),
   });
   if (changedRole) for (const [key, value] of sessions) if (value === id) sessions.delete(key);
   return { account: publicAccount(a) };

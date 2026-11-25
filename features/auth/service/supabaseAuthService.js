@@ -1,9 +1,12 @@
 import { getSupabaseAdmin, createUserClient, getSupabaseAnon } from '../../../lib/supabase.js';
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
 import { normalizeBrazilPhone } from '../../../lib/phone.js';
+import { normalizeProfileBodyFields } from '../../../lib/profileBody.js';
 import { isStrongPassword } from '../../../lib/passwordPolicy.js';
 import { sendAuthLinkEmail } from '../../../lib/mailer.js';
 import { buildTrialFields } from '../../../lib/trial.js';
+
+const PROFILE_BODY_SELECT = 'user_id, nome, email, telefone, trial_started_at, sexo, data_nascimento, altura_cm';
 
 const SESSION_COOKIE = 'ritmo_saude_session';
 const ROLE_LABEL = { admin: 'Administrador', professor: 'Professor', student: 'Aluno' };
@@ -43,6 +46,9 @@ function publicAccount(row, professorName = '') {
     access: row.access_enabled !== false,
     must_change_password: row.must_change_password === true,
     professor_id: row.professor_id || null,
+    sexo: row.sexo || null,
+    data_nascimento: row.data_nascimento || null,
+    altura_cm: row.altura_cm == null || row.altura_cm === '' ? null : Number(row.altura_cm),
     ...buildTrialFields({ role: row.role, trial_started_at: row.trial_started_at }),
   };
   if (out.role === 'student' && out.professor_id && professorName) {
@@ -87,7 +93,7 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
 
   const { data: profile, error: profileErr } = await db
     .from('health_user_profiles')
-    .select('user_id, nome, email, telefone, trial_started_at')
+    .select(PROFILE_BODY_SELECT)
     .eq('user_id', userId)
     .maybeSingle();
   if (profileErr) throw profileErr;
@@ -108,6 +114,9 @@ async function loadAccount(userId, { includeDisabled = false } = {}) {
     email: profile?.email || '',
     telefone: profile?.telefone || '',
     trial_started_at: profile?.trial_started_at || null,
+    sexo: profile?.sexo || null,
+    data_nascimento: profile?.data_nascimento || null,
+    altura_cm: profile?.altura_cm ?? null,
   }, professorName);
 }
 
@@ -352,7 +361,7 @@ export async function listUsers() {
   const [{ data: profiles, error: profileErr }, professorNames] = await Promise.all([
     db
       .from('health_user_profiles')
-      .select('user_id, nome, email, telefone, trial_started_at')
+      .select(PROFILE_BODY_SELECT)
       .in('user_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']),
     listProfessorNames(professorIds),
   ]);
@@ -366,6 +375,9 @@ export async function listUsers() {
       email: profile.email || '',
       telefone: profile.telefone || '',
       trial_started_at: profile.trial_started_at || null,
+      sexo: profile.sexo || null,
+      data_nascimento: profile.data_nascimento || null,
+      altura_cm: profile.altura_cm ?? null,
     }, professorNames.get(role.professor_id) || '');
   });
 }
@@ -391,6 +403,8 @@ export async function createAccount(payload = {}, req = null) {
     return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
   }
   if (phoneResult.error) return { error: phoneResult.error };
+  const body = normalizeProfileBodyFields(payload, { required: role === 'student' });
+  if (body.error) return { error: body.error };
   const linkId = await resolveProfessorId(role, payload.professor_id);
   if (role === 'student' && linkId === undefined) {
     return { error: 'Selecione um professor ativo para vincular o aluno.' };
@@ -451,6 +465,9 @@ export async function createAccount(payload = {}, req = null) {
     nome: n,
     email: e,
     telefone: phoneResult.phone,
+    sexo: body.sexo,
+    data_nascimento: body.data_nascimento,
+    altura_cm: body.altura_cm,
   });
   if (profileErr) {
     await admin.auth.admin.deleteUser(userId);
@@ -541,7 +558,9 @@ export async function regenerateTemporaryPassword(id, req = null) {
   return sendPasswordSetupEmail(id, req);
 }
 
-export async function updateAccount(id, { name, email, role, professor_id, phone, telefone }) {
+export async function updateAccount(id, {
+  name, email, role, professor_id, phone, telefone, sexo, data_nascimento, altura_cm,
+}) {
   const admin = getSupabaseAdmin();
   const current = await loadAccount(id, { includeDisabled: true });
   if (!current) return { error: 'Conta não encontrada.' };
@@ -560,10 +579,24 @@ export async function updateAccount(id, { name, email, role, professor_id, phone
   }
 
   let phoneValue = current.phone || '';
+  let body = {
+    sexo: current.sexo ?? null,
+    data_nascimento: current.data_nascimento ?? null,
+    altura_cm: current.altura_cm ?? null,
+  };
   if (nextRole !== 'admin') {
     const phoneResult = normalizeBrazilPhone(phone || telefone || current.phone);
     if (phoneResult.error) return { error: phoneResult.error };
     phoneValue = phoneResult.phone;
+    body = normalizeProfileBodyFields(
+      {
+        sexo: sexo ?? current.sexo,
+        data_nascimento: data_nascimento ?? current.data_nascimento,
+        altura_cm: altura_cm ?? current.altura_cm,
+      },
+      { required: nextRole === 'student' },
+    );
+    if (body.error) return { error: body.error };
   }
 
   let linkId = null;
@@ -581,7 +614,12 @@ export async function updateAccount(id, { name, email, role, professor_id, phone
   if (clash) return { error: 'Confira nome e e-mail único.' };
 
   const profileUpdate = { nome: n, email: e };
-  if (nextRole !== 'admin') profileUpdate.telefone = phoneValue;
+  if (nextRole !== 'admin') {
+    profileUpdate.telefone = phoneValue;
+    profileUpdate.sexo = body.sexo;
+    profileUpdate.data_nascimento = body.data_nascimento;
+    profileUpdate.altura_cm = body.altura_cm;
+  }
 
   const { error: profileErr } = await admin
     .from('health_user_profiles')
