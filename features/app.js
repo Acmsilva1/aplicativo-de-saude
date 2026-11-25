@@ -19,8 +19,8 @@ import {
   hydrateDietsFromCache,
   writeDietsCache,
 } from './saude/data/dietCache.js';
-import { renderPrivacyPanel, renderPrivacyStandalone } from './privacy/index.js';
-import { confirmAction } from './saude/service/uiConfirmation.js';
+import { openPrivacyModal } from './privacy/index.js';
+import { confirmAction, showToast } from './saude/service/uiConfirmation.js';
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
@@ -349,55 +349,55 @@ function passwordChange(error=''){renderPasswordChange(app,{user:state.user,erro
  await enter();
 }});}
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
-function openPrivacy({standalone=false}={}){
- const canExport=Boolean(state.user)&&!state.user.must_change_password;
+function openPrivacy(){
+ const loggedIn=Boolean(state.user)&&!state.user.must_change_password;
+ const canExport=loggedIn;
  const canErase=canExport&&state.user.role!=='admin';
- const onExport=async()=>{
-  const bundle=await request('/api/auth?resource=privacy-export');
-  const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=`ritmo-saude-meus-dados-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  state.notice={text:'Exportação baixada.',type:'success'};
-  if(!standalone)render();
- };
- const onErase=async()=>{
-  const password=window.prompt('Digite sua senha para confirmar a exclusão definitiva da conta e dos dados de saúde:');
-  if(password==null)return;
-  if(!String(password).trim()){
-   state.notice={text:'Exclusão cancelada: senha obrigatória.',type:'error'};
-   if(!standalone)render();
-   return;
-  }
-  const accepted=await confirmAction(
-   'Isso apaga dieta, água, avaliações corporais e a conta. Não dá para desfazer.',
-   {title:'Excluir minha conta?',confirmLabel:'Excluir definitivamente',tone:'danger'},
-  );
-  if(!accepted)return;
-  await request('/api/auth?resource=privacy-erase',{method:'POST',body:JSON.stringify({password})});
-  clearAllClientHealthCaches();
-  Object.assign(state,{...emptySessionState});
-  auth('Conta e dados excluídos a seu pedido.');
- };
- if(standalone||!state.user){
-  renderPrivacyStandalone(app,{
-   canExport,
-   canErase,
-   onBack:()=>state.user?render():auth(),
-   onExport,
-   onErase,
-  });
-  return;
- }
- state.module='privacy';
- render();
+ openPrivacyModal({
+  canExport,
+  canErase,
+  onExport:async()=>{
+   try{
+    const bundle=await request('/api/auth?resource=privacy-export');
+    const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`ritmo-saude-meus-dados-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exportação baixada.');
+   }catch(e){
+    showToast(e.message||'Falha na exportação.',{type:'error'});
+   }
+  },
+  onErase:async()=>{
+   const password=window.prompt('Digite sua senha para confirmar a exclusão definitiva da conta e dos dados de saúde:');
+   if(password==null)return;
+   if(!String(password).trim()){
+    showToast('Exclusão cancelada: senha obrigatória.',{type:'error'});
+    return;
+   }
+   const accepted=await confirmAction(
+    'Isso apaga dieta, água, avaliações corporais e a conta. Não dá para desfazer.',
+    {title:'Excluir minha conta?',confirmLabel:'Excluir definitivamente',tone:'danger'},
+   );
+   if(!accepted)return;
+   try{
+    await request('/api/auth?resource=privacy-erase',{method:'POST',body:JSON.stringify({password})});
+    document.querySelector('dialog.privacy-modal')?.remove();
+    clearAllClientHealthCaches();
+    Object.assign(state,{...emptySessionState});
+    auth('Conta e dados excluídos a seu pedido.');
+   }catch(e){
+    showToast(e.message||'Não foi possível excluir.',{type:'error'});
+   }
+  },
+ });
 }
 function auth(error=''){renderLogin(app,{
  error,
- onPrivacy:()=>openPrivacy({standalone:true}),
+ onPrivacy:()=>openPrivacy(),
  onLogin:async({email,password})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
   try{
@@ -641,48 +641,11 @@ async function createAccount(payload){
  }finally{endLoading();render();}
 }
 function render(){if(!state.user)return auth();if(state.user.must_change_password)return passwordChange();if(state.user.trial_expired)return trialExpired();app.dataset.module=state.module;
- const canExport=!state.user.must_change_password;
- const canErase=canExport&&state.user.role!=='admin';
- const privacyHandlers={
-  onPrivacyExport:async()=>{
-   try{
-    const bundle=await request('/api/auth?resource=privacy-export');
-    const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=`ritmo-saude-meus-dados-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    state.notice={text:'Exportação baixada.',type:'success'};
-   }catch(e){state.notice={text:e.message||'Falha na exportação.',type:'error'};}
-   render();
-  },
-  onPrivacyErase:async()=>{
-   const password=window.prompt('Digite sua senha para confirmar a exclusão definitiva da conta e dos dados de saúde:');
-   if(password==null)return;
-   if(!String(password).trim()){state.notice={text:'Exclusão cancelada: senha obrigatória.',type:'error'};render();return;}
-   const accepted=await confirmAction(
-    'Isso apaga dieta, água, avaliações corporais e a conta. Não dá para desfazer.',
-    {title:'Excluir minha conta?',confirmLabel:'Excluir definitivamente',tone:'danger'},
-   );
-   if(!accepted)return;
-   try{
-    await request('/api/auth?resource=privacy-erase',{method:'POST',body:JSON.stringify({password})});
-    clearAllClientHealthCaches();
-    Object.assign(state,{...emptySessionState});
-    auth('Conta e dados excluídos a seu pedido.');
-   }catch(e){state.notice={text:e.message||'Não foi possível excluir.',type:'error'};render();}
-  },
- };
+ if(state.module==='privacy')state.module='home';
  renderSaudeContent(app,{state,
- privacyHtml:state.module==='privacy'?renderPrivacyPanel({canExport,canErase}):'',
- onNavigate:(module,targetId='',afterLoad)=>{
-  if(module==='privacy'){state.module='privacy';state.notice='';render();return;}
-  return navigate(module,targetId,afterLoad);
- },
+ onNavigate:navigate,
  onLogout:logout,
- ...privacyHandlers,
+ onPrivacy:()=>openPrivacy(),
  onCreateAccount:payload=>createAccount(payload),
  onRegeneratePassword:resendPasswordLink,
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),

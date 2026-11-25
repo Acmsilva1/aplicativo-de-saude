@@ -692,9 +692,7 @@ export function renderSaudeContent(container, {
   onSaveAssessment,
   onDeleteAssessment,
   onLogout,
-  onPrivacyExport,
-  onPrivacyErase,
-  privacyHtml = '',
+  onPrivacy,
 }) {
   const admin = state.user?.role === 'admin';
   const professor = state.user?.role === 'professor';
@@ -704,12 +702,9 @@ export function renderSaudeContent(container, {
     : professor
     ? { label: 'Professor' }
     : { label: 'Aluno' };
-  const homeActive = state.module === homeModule || state.module === 'privacy';
+  const homeActive = state.module === homeModule;
   let content;
 
-  if (state.module === 'privacy') {
-    content = privacyHtml || '<section class="module-page"><p>Privacidade</p></section>';
-  } else {
   const adminProfessors = (state.accounts || []).filter((entry) => entry.role === 'professor');
   if (admin) {
     if (state.module === 'createAccount') content = renderAccountEditor(null, adminProfessors);
@@ -743,7 +738,6 @@ export function renderSaudeContent(container, {
     else if (state.module === 'users') content = renderProfessorProfiles(state.profiles, state.selectedUserId);
     else content = renderProfessorHome({ profiles: state.profiles || [], templates: state.templates || [] });
   } else content = renderStudentHome(state);
-  }
 
   ensureWaterDropStyles();
   const loadingTitle = esc(state.loadingTitle || 'Abrindo sua área');
@@ -877,9 +871,7 @@ export function renderSaudeContent(container, {
     onNavigate?.('createDiet', state.selectedUserId);
   }));
   container.querySelector('[data-action="logout"]')?.addEventListener('click', onLogout);
-  container.querySelector('[data-action="privacy"]')?.addEventListener('click', () => onNavigate?.('privacy'));
-  container.querySelector('[data-privacy-export]')?.addEventListener('click', () => onPrivacyExport?.());
-  container.querySelector('[data-privacy-erase]')?.addEventListener('click', () => onPrivacyErase?.());
+  container.querySelector('[data-action="privacy"]')?.addEventListener('click', () => onPrivacy?.());
   container.querySelector('[data-account-form]')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-choice-set]');
     if (!button || button.disabled) return;

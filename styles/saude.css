@@ -5421,8 +5421,100 @@ details[open] > summary .ui-chevron--fold {
   opacity: .9;
 }
 .login-privacy-link { margin: .35rem 0 0; }
-.privacy-page, .privacy-card { max-width: 40rem; }
-.privacy-block { margin: 1rem 0; }
-.privacy-block h2 { margin: 0 0 .4rem; font-size: 1rem; }
-.privacy-block ul { margin: 0; padding-left: 1.1rem; }
-.privacy-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+
+.privacy-modal {
+  color: #1b2430;
+  background: #f7f8fa;
+  border: 1px solid #d9dee7;
+  border-radius: 14px;
+  box-sizing: border-box;
+  width: min(92vw, 22rem);
+  max-width: calc(100vw - 24px);
+  max-height: min(78dvh, 32rem);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 18px 40px #00000038;
+}
+.privacy-modal::backdrop {
+  background: #01071866;
+}
+.privacy-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .7rem .75rem .45rem;
+  border-bottom: 1px solid #e6eaef;
+}
+.privacy-modal__eyebrow {
+  display: block;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #b42318;
+  margin-bottom: .15rem;
+}
+.privacy-modal__head h2 {
+  margin: 0;
+  font-size: .88rem;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+.privacy-modal__close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #5b6b80;
+  font-size: 1.35rem;
+  line-height: 1;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.privacy-modal__close:hover,
+.privacy-modal__close:focus-visible {
+  background: #e8edf3;
+  color: #182433;
+  outline: none;
+}
+.privacy-modal__body {
+  padding: .55rem .75rem .7rem;
+  overflow: auto;
+  max-height: min(48dvh, 18rem);
+  font-size: .72rem;
+  line-height: 1.45;
+  color: #4b5a6c;
+}
+.privacy-modal__lead { margin: 0 0 .55rem; }
+.privacy-modal__label {
+  margin: .55rem 0 .2rem;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: #2d3a4a;
+}
+.privacy-modal__list {
+  margin: 0;
+  padding-left: 1rem;
+}
+.privacy-modal__list li + li { margin-top: .2rem; }
+.privacy-modal__body p { margin: 0; }
+.privacy-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  padding: .55rem .7rem .7rem;
+  border-top: 1px solid #e6eaef;
+  background: #fff;
+}
+.privacy-modal__actions > button {
+  flex: 1 1 8rem;
+  min-height: 36px;
+  font-size: .78rem;
+  border-radius: 9px;
+}
