@@ -1,12 +1,85 @@
 import { listAvailableStudents } from '../../auth/service/mockAuthService.js';
 import { randomUUID } from 'node:crypto';
 import { createEmptyDietMeals, todayDietDate } from '../service/dietasService.js';
+import { enrichList, validateAssessmentInput } from '../service/avaliacoesService.js';
 import { ALIMENTOS_NUTRICIONAIS } from './alimentosNutricionais.js';
 const users = new Map();
+function seedAssessments(id) {
+  if (id === 'demo-common-user') {
+    return [
+      {
+        id: 'assess-andre-1',
+        avaliado_em: '2026-09-01',
+        peso_kg: 92,
+        altura_cm: 178,
+        pescoco_cm: 40,
+        cintura_cm: 98,
+        quadril_cm: 104,
+        peito_mm: 18,
+        axilar_media_mm: null,
+        triceps_mm: null,
+        subescapular_mm: null,
+        abdominal_mm: 28,
+        suprailiaca_mm: null,
+        coxa_mm: 22,
+        gordura_pct_informada: null,
+        metodo_preferido: 'auto',
+        observacoes: 'Avaliação inicial — circunferências + dobras.',
+      },
+      {
+        id: 'assess-andre-2',
+        avaliado_em: '2026-11-01',
+        peso_kg: 87.5,
+        altura_cm: 178,
+        pescoco_cm: 39,
+        cintura_cm: 90,
+        quadril_cm: 101,
+        peito_mm: 14,
+        axilar_media_mm: 12,
+        triceps_mm: 10,
+        subescapular_mm: 13,
+        abdominal_mm: 22,
+        suprailiaca_mm: 11,
+        coxa_mm: 18,
+        gordura_pct_informada: null,
+        metodo_preferido: 'auto',
+        observacoes: 'Reavaliação após 2 meses — 7 dobras (JP7).',
+      },
+    ];
+  }
+  if (id === 'demo-student-ana') {
+    return [
+      {
+        id: 'assess-ana-1',
+        avaliado_em: '2026-10-10',
+        peso_kg: 68,
+        altura_cm: 165,
+        pescoco_cm: 32,
+        cintura_cm: 74,
+        quadril_cm: 98,
+        peito_mm: null,
+        axilar_media_mm: null,
+        triceps_mm: 18,
+        subescapular_mm: null,
+        abdominal_mm: null,
+        suprailiaca_mm: 16,
+        coxa_mm: 24,
+        gordura_pct_informada: null,
+        metodo_preferido: 'auto',
+        observacoes: 'Baseline feminino — fita + JP3.',
+      },
+    ];
+  }
+  return [];
+}
 function dataFor(id) {
- if(!users.has(id))users.set(id,{diets:[],goal:null,goalName:'Hidratação diária',entries:[]});
+ if(!users.has(id))users.set(id,{diets:[],goal:null,goalName:'Hidratação diária',entries:[],assessments:seedAssessments(id)});
  const data=users.get(id);
+ if(!Array.isArray(data.assessments))data.assessments=seedAssessments(id);
  return data;
+}
+function profileFor(id) {
+  return listAvailableStudents().find((p) => p.id === id) || null;
 }
 function normalizedMeals(source) {
  return createEmptyDietMeals().map(m=>{const entry=Array.isArray(source)?source.find(x=>x?.tipo===m.tipo):null; return {...m,horario:/^([01]\d|2[0-3]):[0-5]\d$/.test(entry?.horario)?entry.horario:'',itens:(Array.isArray(entry?.itens)?entry.itens:[]).slice(0,80).filter(Boolean).map(x=>({nome:String(x.nome||'').slice(0,160),quantidade:String(x.quantidade||'').slice(0,80),observacao:String(x.observacao||'').slice(0,500),alimento_id:Number.isSafeInteger(Number(x.alimento_id||x.food_id))?Number(x.alimento_id||x.food_id):null,...(Number.isFinite(Number(x.quantidade_valor))&&Number(x.quantidade_valor)>0?{quantidade_valor:Number(x.quantidade_valor),quantidade_unidade:['g','ml','un','porcao'].includes(x.quantidade_unidade)?x.quantidade_unidade:'g'}:{})})).filter(x=>x.nome)};});
@@ -26,7 +99,28 @@ export const mockSaudeStore = {
  getTemplates(ownerId){return structuredClone(templatesFor(ownerId));},
  saveTemplate(ownerId,input,id){const list=templatesFor(ownerId);const index=list.findIndex(x=>x.id===id);if(id&&index<0)return null;const template=buildDiet(input,id);if(index<0)list.push(template);else list[index]=template;return structuredClone(template);},
  deleteTemplate(ownerId,id){const list=templatesFor(ownerId);const index=list.findIndex(x=>x.id===id);if(index<0)return false;list.splice(index,1);return true;},
- getProfessorUsers(professorId){return listAvailableStudents(professorId).map(p=>{const diets=dataFor(p.id).diets.filter(diet=>diet.visible_to_student);return {...p,diet_title:diets[0]?.titulo||'Sem dieta',diet_count:diets.length,water:this.getWater(p.id)};});},
+ getProfessorUsers(professorId){return listAvailableStudents(professorId).map(p=>{const diets=dataFor(p.id).diets.filter(diet=>diet.visible_to_student);const assessments=enrichList(dataFor(p.id).assessments,p);const latest=assessments[0]||null;return {...p,diet_title:diets[0]?.titulo||'Sem dieta',diet_count:diets.length,water:this.getWater(p.id),assessment_count:assessments.length,latest_assessment:latest?{id:latest.id,avaliado_em:latest.avaliado_em,peso_kg:latest.peso_kg,bmi:latest.bmi,body_fat_pct:latest.body_fat_pct}:null};});},
+ getAssessments(studentId){const profile=profileFor(studentId);return enrichList(dataFor(studentId).assessments,profile||{});},
+ getProfessorAssessments(professorId,studentId){if(!listAvailableStudents(professorId).some(p=>p.id===studentId))return null;const profile=listAvailableStudents(professorId).find(p=>p.id===studentId);return {user:profile,assessments:enrichList(dataFor(studentId).assessments,profile||{})};},
+ getAssessment(studentId,assessmentId){const profile=profileFor(studentId);const row=dataFor(studentId).assessments.find(x=>x.id===assessmentId);return row?enrichList([row],profile||{})[0]:null;},
+ saveAssessment(studentId,input,assessmentId){
+  const profile=profileFor(studentId);
+  const {error,data}=validateAssessmentInput(input,profile||{});
+  if(error)return {error};
+  const list=dataFor(studentId).assessments;
+  const index=list.findIndex(x=>x.id===assessmentId);
+  if(assessmentId&&index<0)return {error:'Avaliação não encontrada.'};
+  const row={id:assessmentId||randomUUID(),...data};
+  if(index<0)list.push(row);else list[index]=row;
+  return {assessment:enrichList([row],profile||{})[0]};
+ },
+ deleteAssessment(studentId,assessmentId){
+  const list=dataFor(studentId).assessments;
+  const index=list.findIndex(x=>x.id===assessmentId);
+  if(index<0)return false;
+  list.splice(index,1);
+  return true;
+ },
  getProfessorDietSummaries(professorId,studentId){if(!listAvailableStudents(professorId).some(p=>p.id===studentId))return null;return dataFor(studentId).diets.map(({id,titulo,objetivo,observacoes,meta_calorias,semanal,visible_to_student,updated_at})=>({id,titulo,objetivo,observacoes,meta_calorias,semanal,visible_to_student,updated_at}));},
  getProfessorWater(professorId,studentId){const user=listAvailableStudents(professorId).find(p=>p.id===studentId);return user?{user,water:this.getWater(studentId)}:null;},
  canUserAccess(id){return listAvailableStudents().some(p=>p.id===id&&p.access);},

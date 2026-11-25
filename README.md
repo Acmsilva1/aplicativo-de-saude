@@ -34,10 +34,20 @@ definida no Supabase. Também existe o comando `npm run seed:admin`.
 
 ```powershell
 npm install
-npm run dev
+npm run dev:mock
 ```
 
-Com `.env` Supabase preenchido, a API local usa Postgres (não mock). Sem Supabase e fora de produção, cai no mock.
+`dev:mock` força dados em memória (inclui avaliações corporais de demonstração). Com `npm run dev` e `.env` Supabase preenchido, a API local usa Postgres.
+
+Acesse http://localhost:5199 com:
+
+| Perfil | E-mail | Senha |
+|--------|--------|-------|
+| Professor | `professor@saude.local` | `Demo@1234` |
+| Aluno (André) | `aluno@saude.local` | `Demo@1234` |
+| Admin | `master@saude.local` | `Demo@1234` |
+
+Outros alunos mock: `ana@saude.local`, `bruno@saude.local`, `carla@saude.local`, `diego@saude.local` (mesma senha).
 
 ```powershell
 npm run build

@@ -21,14 +21,14 @@ import {
   writeDietsCache,
 } from './saude/data/dietCache.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false,biometricSupported:false};
+const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false,biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
  state.loading=true;state.loadingTitle=title;state.loadingDetail=detail;
 }
 function endLoading(){
  state.loading=false;state.loadingTitle='';state.loadingDetail='';
 }
-const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,notice:'',pendingBiometricEnroll:false};
+const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false};
 let forcePasswordLogin=false;
 const INVITE_TOKENS_KEY='ritmo_invite_tokens';
 function storeInviteTokens(tokens){
@@ -371,10 +371,11 @@ async function load(module,targetId=''){
  else if(module==='monitor')await saves.idle([`goal:${userId}`]);
  else if(module==='water')await saves.idle(['water']);
  else if(['portfolio','template-detail','editTemplate','createDiet'].includes(module))await saves.idle(['templates:all']);
+ else if(['assessments','assessment-detail','createAssessment','editAssessment','compareAssessments'].includes(module))await saves.idle([`assessments:${userId}`]);
  const previousModule=state.module;state.module=module;state.notice='';state.moduleError='';
  state.foodItemContext=null;
- if(module!==previousModule){state.dietDraft=null;state.templateDraft=null;state.dietSourceSelected=false;}
- if(targetId && !['diet-detail','editDiet','template-detail','editTemplate'].includes(module))state.selectedUserId=targetId;
+ if(module!==previousModule){state.dietDraft=null;state.templateDraft=null;state.dietSourceSelected=false;if(!['editAssessment','createAssessment'].includes(module))state.assessmentDraft=null;}
+ if(targetId && !['diet-detail','editDiet','template-detail','editTemplate','assessment-detail'].includes(module))state.selectedUserId=targetId;
  try{
   if(state.user.role==='admin'){
    if(module==='observability')state.metrics=await request('/api/auth?resource=observability');
@@ -407,6 +408,19 @@ async function load(module,targetId=''){
    if(module==='createTemplate')state.template=null;
    const requests=[];
    if(module==='monitor')requests.push(request(`/api/saude?resource=professor-agua&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{state.monitor=data;}));
+   if(['assessments','assessment-detail','createAssessment','editAssessment','compareAssessments'].includes(module)){
+    requests.push(request(`/api/saude?resource=professor-avaliacoes&user_id=${encodeURIComponent(state.selectedUserId)}`).then(data=>{
+     state.assessments=data.assessments||[];
+     if(module==='assessment-detail')state.assessment=state.assessments.find(item=>item.id===state.assessment?.id)||state.assessments[0]||null;
+     if(module==='editAssessment')state.assessmentDraft=state.assessmentDraft||state.assessments.find(item=>item.id===state.assessment?.id)||state.assessment||null;
+     if(module==='createAssessment')state.assessmentDraft=state.assessmentDraft||null;
+     if(module==='compareAssessments' && state.assessments.length>=2){
+      const sorted=[...state.assessments].sort((a,b)=>String(a.avaliado_em).localeCompare(String(b.avaliado_em)));
+      if(!state.compareFromId)state.compareFromId=sorted[0].id;
+      if(!state.compareToId)state.compareToId=sorted[sorted.length-1].id;
+     }
+    }));
+   }
    if(module==='diets'){
     requests.push(request(`/api/saude?resource=professor-dieta&user_id=${encodeURIComponent(state.selectedUserId)}&summary=true`).then(data=>{state.diets=data.diets;}));
    }else if(['diet-detail','editDiet'].includes(module)){
@@ -426,12 +440,21 @@ async function load(module,targetId=''){
    await Promise.all(requests);
   }else{
    if(module==='home'){
-    const [water,diets]=await Promise.all([request('/api/saude?resource=agua'),request('/api/saude?resource=dietas')]);
+    const [water,diets,assessments]=await Promise.all([
+     request('/api/saude?resource=agua'),
+     request('/api/saude?resource=dietas'),
+     request('/api/saude?resource=avaliacoes').catch(()=>({assessments:[]})),
+    ]);
     state.water=water;
     state.diets=diets.diets;
+    state.assessments=assessments.assessments||[];
     writeDietsCache(state.user.id,state.diets);
    }else if(module==='water')state.water=await request('/api/saude?resource=agua');
-   else if(module==='diet-detail'){
+   else if(module==='assessments'||module==='assessment-detail'){
+    const data=await request('/api/saude?resource=avaliacoes');
+    state.assessments=data.assessments||[];
+    if(module==='assessment-detail')state.assessment=state.assessments.find(item=>item.id===state.assessment?.id)||state.assessments[0]||null;
+   }else if(module==='diet-detail'){
     const ownerId=state.user.id;
     if(dietsHaveStructure(state.diets)){
      const cached=hydrateDietsFromCache(ownerId,state.diets.map(diet=>({id:diet.id,updated_at:diet.updated_at})));
@@ -460,7 +483,7 @@ async function load(module,targetId=''){
    state.user={...state.user,trial_expired:true,trial_days_remaining:0};
    return;
   }
-  state.notice={text:e.message,type:'error'};state.moduleError=e.message;state.diets=[];state.diet=null;state.water=null;state.monitor=null;
+  state.notice={text:e.message,type:'error'};state.moduleError=e.message;state.diets=[];state.diet=null;state.water=null;state.monitor=null;state.assessments=[];state.assessment=null;
  }
 }
 async function navigate(module,targetId='',afterLoad){
@@ -477,7 +500,7 @@ async function action(work,module='users',targetId='',successNotice='Tudo certo!
   const result=await work();
   if(module==='accounts')state.accountsLoaded=false;
   if(module==='portfolio')state.templatesLoaded=false;
-  if(['diets','monitor'].includes(module))state.profilesLoaded=false;
+  if(['diets','monitor','assessments'].includes(module))state.profilesLoaded=false;
   await load(module,targetId);
   state.notice={text:typeof successNotice==='function'?successNotice(result):successNotice,type:'success'};
  }catch(e){state.notice={text:e.message,type:'error'};}
@@ -533,6 +556,8 @@ function render(){if(!state.user)return auth();if(state.user.must_change_passwor
  onAccountAccess:(id,access)=>action(()=>request('/api/auth?resource=account-access',{method:'PATCH',body:JSON.stringify({id,access})}),'accounts','',access?'Acesso liberado.':'Acesso bloqueado.'),
  onEditAccount:payload=>action(async()=>{const result=await request('/api/auth?resource=accounts',{method:'PATCH',body:JSON.stringify(payload)});if(result.account.id===state.user.id)state.user=result.account;},'accounts','','Conta atualizada.'),
  onDeleteAccount:id=>action(()=>request('/api/auth?resource=accounts',{method:'DELETE',body:JSON.stringify({id})}),'accounts','',(result)=>result?.unlinkedStudents?`Conta excluída. Alunos ficaram sem professor; reatribua nas contas.`:'Conta excluída.'),
+ onSaveAssessment:(payload,userId,assessmentId)=>action(()=>request('/api/saude?resource=professor-avaliacao',{method:assessmentId?'PATCH':'POST',body:JSON.stringify({...payload,user_id:userId,id:assessmentId||undefined})}),'assessments',userId,assessmentId?'Avaliação atualizada.':'Avaliação registrada.'),
+ onDeleteAssessment:(assessmentId,userId)=>action(()=>request('/api/saude?resource=professor-avaliacao',{method:'DELETE',body:JSON.stringify({user_id:userId,id:assessmentId})}),'assessments',userId,'Avaliação excluída.'),
  onSaveTemplate:payload=>savePlan(payload,{template:true}),
  onDeleteTemplate:id=>savePlan({id},{template:true,remove:true}),
  onUseTemplate:async id=>{const template=state.templates.find(entry=>entry.id===id);if(!template||state.loading||String(id).startsWith('pending-'))return;const draft=structuredClone(template);delete draft.id;await navigate('createDiet','',()=>{state.dietDraft=draft;state.dietSourceSelected=true;});},

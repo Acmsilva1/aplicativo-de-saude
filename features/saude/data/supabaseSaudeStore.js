@@ -756,4 +756,15 @@ export const supabaseSaudeStore = {
       fonte_nutricional: food.fonte_nutricional,
     }));
   },
+
+  // Avaliações corporais: protótipo só no mock local (FORCE_MOCK=true).
+  async getAssessments() { return []; },
+  async getProfessorAssessments(_professorId, studentId) {
+    return { user: { id: studentId }, assessments: [] };
+  },
+  async getAssessment() { return null; },
+  async saveAssessment() {
+    return { error: 'Avaliações corporais ainda não estão disponíveis neste ambiente. Use o modo mock local.' };
+  },
+  async deleteAssessment() { return false; },
 };

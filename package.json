@@ -8,6 +8,8 @@
   },
   "scripts": {
     "dev": "node server.js",
+    "dev:mock": "node scripts/run-dev-mock.mjs",
+    "verify:body": "node scripts/verify-body-composition.mjs",
     "build": "vite build && node scripts/build-pwa.js",
     "start": "node server.js",
     "bootstrap:admin": "node scripts/bootstrap-admin.js",

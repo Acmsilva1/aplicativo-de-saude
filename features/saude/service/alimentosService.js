@@ -129,7 +129,10 @@ function quantityWeight(item, food) {
   if (!requested) return null;
   if (requested.unit === 'g' || requested.unit === 'ml') return requested.amount;
   if (requested.unit === 'porcao') return referenceWeight ? requested.amount * referenceWeight : null;
-  const unitWeight = foodUnitWeight(food);
+  // Preferência: peso por unidade explícito no catálogo (ex.: "2 un (~100 g)" → 50 g).
+  // Sem isso, a porção de referência vale como 1 unidade — evita zerar kcal ao lançar "1 un"
+  // em alimentos como banana, cuja porção já representa a peça típica.
+  const unitWeight = foodUnitWeight(food) ?? referenceWeight;
   return unitWeight ? requested.amount * unitWeight : null;
 }
 

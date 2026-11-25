@@ -6,7 +6,10 @@ import { buildTrialFields } from '../../../lib/trial.js';
 
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEY_LEN = 64;
-const DEFAULT_PASSWORD = '12345';
+/** Senha padrão do mock local (login direto, sem troca obrigatória). */
+export const MOCK_DEMO_PASSWORD = 'Demo@1234';
+const DEFAULT_PASSWORD = MOCK_DEMO_PASSWORD;
+const DEMO_TRIAL_STARTED = '2026-11-01T12:00:00.000Z';
 
 function hashPassword(plain) {
   const salt = randomBytes(16);
@@ -29,12 +32,17 @@ const professorId = 'demo-professor';
 const inviteTokens = new Map();
 
 const accounts = [
-  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: true, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '', trial_started_at: null },
-  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: true, name: 'Professor', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001', trial_started_at: null },
-  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: true, name: 'André', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002', trial_started_at: null },
+  { id: 'demo-admin', email: 'master@saude.local', password_hash: seedHash, must_change_password: false, name: 'Administrador', role: 'admin', role_label: 'Administrador', access: true, professor_id: null, phone: '', trial_started_at: DEMO_TRIAL_STARTED, sexo: null, data_nascimento: null, altura_cm: null },
+  { id: professorId, email: 'professor@saude.local', password_hash: seedHash, must_change_password: false, name: 'Professor Demo', role: 'professor', role_label: 'Professor', access: true, professor_id: null, phone: '+5527999990001', trial_started_at: DEMO_TRIAL_STARTED, sexo: 'male', data_nascimento: '1985-03-10', altura_cm: 175 },
+  { id: 'demo-common-user', email: 'aluno@saude.local', password_hash: seedHash, must_change_password: false, name: 'André Aluno', role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '+5527999990002', trial_started_at: DEMO_TRIAL_STARTED, sexo: 'male', data_nascimento: '1992-06-15', altura_cm: 178 },
 ];
-for (const [id, name, email] of [['demo-student-ana', 'Ana', 'ana@saude.local'], ['demo-student-bruno', 'Bruno', 'bruno@saude.local'], ['demo-student-carla', 'Carla', 'carla@saude.local'], ['demo-student-diego', 'Diego', 'diego@saude.local']]) {
-  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: true, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '', trial_started_at: null });
+for (const [id, name, email, sexo, data_nascimento, altura_cm] of [
+  ['demo-student-ana', 'Ana', 'ana@saude.local', 'female', '1995-08-22', 165],
+  ['demo-student-bruno', 'Bruno', 'bruno@saude.local', 'male', '1988-11-03', 175],
+  ['demo-student-carla', 'Carla', 'carla@saude.local', 'female', '1998-01-30', 162],
+  ['demo-student-diego', 'Diego', 'diego@saude.local', 'male', '1990-04-18', 180],
+]) {
+  accounts.push({ id, name, email, password_hash: seedHash, must_change_password: false, role: 'student', role_label: 'Aluno', access: true, professor_id: professorId, phone: '', trial_started_at: DEMO_TRIAL_STARTED, sexo, data_nascimento, altura_cm });
 }
 
 const sessions = new Map();

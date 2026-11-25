@@ -1,5 +1,6 @@
 import { formFeedback, authErrorMessage } from './formFeedback.js';
 import { isStrongPassword, STRONG_PASSWORD_HINT, STRONG_PASSWORD_ERROR } from '../../lib/passwordPolicy.js';
+import { labelWithRequired, requiredLegend } from '../../lib/formRequired.js';
 
 function bindPasswordForm(form, feedback, { submitLabel, onSubmit }) {
   form.addEventListener('submit', async (event) => {
@@ -34,7 +35,7 @@ function bindPasswordForm(form, feedback, { submitLabel, onSubmit }) {
 }
 
 function passwordFieldsHtml() {
-  return `<label for="new-password">Nova senha</label><input id="new-password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="80" required><small>${STRONG_PASSWORD_HINT}</small><label for="confirm-password">Confirme a nova senha</label><input id="confirm-password" name="confirmation" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="80" required><button type="submit" class="button button--primary">Salvar senha e continuar</button>`;
+  return `${requiredLegend()}<label for="new-password">${labelWithRequired('Nova senha', true)}</label><input id="new-password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="80" required><small>${STRONG_PASSWORD_HINT}</small><label for="confirm-password">${labelWithRequired('Confirme a nova senha', true)}</label><input id="confirm-password" name="confirmation" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="80" required><button type="submit" class="button button--primary">Salvar senha e continuar</button>`;
 }
 
 export function renderPasswordChange(container, { user, error = '', onSubmit, onLogout }) {

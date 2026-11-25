@@ -34,6 +34,11 @@ export const saudeStore = {
   setWaterGoal: (...args) => call('setWaterGoal', ...args),
   deleteWaterGoal: (...args) => call('deleteWaterGoal', ...args),
   addWater: (...args) => call('addWater', ...args),
+  getAssessments: (...args) => call('getAssessments', ...args),
+  getProfessorAssessments: (...args) => call('getProfessorAssessments', ...args),
+  getAssessment: (...args) => call('getAssessment', ...args),
+  saveAssessment: (...args) => call('saveAssessment', ...args),
+  deleteAssessment: (...args) => call('deleteAssessment', ...args),
   async listAlimentos() {
     if (useMockData()) {
       return ALIMENTOS_NUTRICIONAIS.map((food, index) => ({

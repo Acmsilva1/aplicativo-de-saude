@@ -3,6 +3,15 @@ import { WATER_AMOUNTS_ML, waterAmountLabel } from './service/waterIntakeService
 import { DIET_MEALS, DIET_WEEK, dietDayIndex, dietForDate, todayDietDate } from './service/dietasService.js';
 import { DIET_NUTRITION_STYLES, renderDietFoodDetails, renderDietNutritionTotal } from './dietNutritionView.js';
 import { renderWaterDropHtml, WATER_DROP_STYLES } from './waterDropVisual.js';
+import {
+  renderAssessmentCompare,
+  renderAssessmentDetail,
+  renderAssessmentEditor,
+  renderAssessmentList,
+} from './avaliacoesView.js';
+import { openAssessmentPdfReport } from './service/assessmentReport.js';
+import { labelWithRequired, requiredLegend } from '../../lib/formRequired.js';
+import { CHEVRON_FOLD, CHEVRON_ICON } from '../../lib/icons.js';
 import { formatBrazilPhone } from '../../lib/phone.js';
 
 const esc = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -12,6 +21,12 @@ const noticeText = (notice) => typeof notice === 'string' ? notice : notice?.tex
 const MEAL_EMOJIS = { cafe_da_manha: '☕', lanche_da_manha: '🍎', almoco: '🍛', lanche_da_tarde: '🥪', jantar: '🍲', ceia: '🌙' };
 const mealEmoji = (tipo) => MEAL_EMOJIS[tipo] || '🍽️';
 const waterEmoji = () => '💧';
+/** Pessoa em pé (sexo do perfil) + balança — padrão emoji dos cards. */
+const assessmentEmoji = (profile) => {
+  const sex = profile?.sexo || profile?.sex;
+  const person = sex === 'female' ? '🧍‍♀️' : sex === 'male' ? '🧍‍♂️' : '🧍';
+  return `${person}⚖️`;
+};
 const FOOD_UNIT_OPTIONS = [
   { value: 'g', label: 'Gramas (g)', emoji: '⚖️' },
   { value: 'un', label: 'Unidades', emoji: '🔢' },
@@ -60,14 +75,14 @@ function renderChoiceOptions({ name, label, value, options = [], required = fals
     return `<button type="button" class="saude-choice-tag${isSelected ? ' is-selected' : ''}" data-choice-set="${esc(name)}" data-choice-value="${esc(option.value)}" aria-pressed="${isSelected}"${disabled ? ' disabled' : ''}>${emoji}<span>${esc(option.label)}</span>${option.detail ? `<small>${esc(option.detail)}</small>` : ''}</button>`;
   }).join('');
   const groupClass = variant === 'cards' ? 'saude-diet-type-options' : 'saude-choice-tags';
-  return `<div class="saude-choice-field${disabled ? ' is-disabled' : ''}" data-choice-field="${esc(name)}"><span class="saude-choice-label">${label}</span>${hidden}<div class="${groupClass}" role="group" aria-label="${esc(String(label).replace(/<[^>]+>/g, ''))}">${buttons}</div>${help}</div>`;
+  return `<div class="saude-choice-field${disabled ? ' is-disabled' : ''}" data-choice-field="${esc(name)}"><span class="saude-choice-label">${labelWithRequired(label, required)}</span>${hidden}<div class="${groupClass}" role="group" aria-label="${esc(String(label).replace(/<[^>]+>/g, ''))}">${buttons}</div>${help}</div>`;
 }
 
 function navRow({ action, id, icon, label, meta = '', detail = '', disabled = false }) {
   return `<li><button type="button" class="fin-nav-row" data-action="${esc(action)}" data-id="${esc(id)}"${disabled ? ' disabled' : ''}>
     <span class="fin-nav-row__icon" aria-hidden="true">${icon}</span>
     <span class="fin-nav-row__main"><span class="fin-nav-row__label">${esc(label)}</span>${detail ? `<small class="fin-nav-row__detail">${esc(detail)}</small>` : ''}</span>
-    ${meta ? `<span class="saude-nav-meta">${esc(meta)}</span>` : ''}<span class="fin-nav-row__chevron" aria-hidden="true">›</span>
+    ${meta ? `<span class="saude-nav-meta">${esc(meta)}</span>` : ''}<span class="fin-nav-row__chevron" aria-hidden="true">${CHEVRON_ICON}</span>
   </button></li>`;
 }
 
@@ -78,14 +93,15 @@ function renderSelectionDrill({
   rowsHtml,
   hiddenHtml = '',
   disabled = false,
+  required = false,
 }) {
   const titleId = `drill-title-${String(label || 'opcao').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return `<div class="saude-student-picker saude-selection-drill${disabled ? ' is-disabled' : ''}" data-student-drill>
     ${hiddenHtml}
     <button type="button" class="saude-drill-trigger" data-student-drill-toggle aria-haspopup="dialog" aria-expanded="false"${disabled ? ' disabled' : ''}>
-      <span class="saude-drill-trigger__label">${esc(label)}</span>
+      <span class="saude-drill-trigger__label">${labelWithRequired(esc(label), required)}</span>
       <span class="saude-drill-trigger__value">${esc(valueLabel)}</span>
-      <span class="saude-drill-trigger__chevron" aria-hidden="true">›</span>
+      <span class="saude-drill-trigger__chevron" aria-hidden="true">${CHEVRON_ICON}</span>
     </button>
     <div class="saude-drill-sheet" data-student-drill-sheet hidden>
       <button type="button" class="saude-drill-sheet__backdrop" data-student-drill-dismiss tabindex="-1" aria-label="Fechar seletor"></button>
@@ -112,12 +128,13 @@ function renderProfessorDrill(professors = [], selectedProfessorId = '', { name 
     </button></li>`;
   }).join('');
   return renderSelectionDrill({
-    label: 'Professor',
+    label: 'Professor responsável',
     title: 'Selecionar professor',
     valueLabel: selected ? profileName(selected) : 'Selecione',
     rowsHtml: rows || '<li class="saude-empty-row">Nenhum professor ativo.</li>',
     hiddenHtml: `<input type="hidden" name="${esc(name)}" value="${esc(id)}"${required ? ' required' : ''}${disabled ? ' disabled' : ''}>`,
     disabled,
+    required,
   });
 }
 
@@ -143,6 +160,7 @@ function renderStudentDrill(profiles = [], selectedUserId = '', { name = '', req
     rowsHtml: rows,
     hiddenHtml: hidden,
     disabled,
+    required,
   });
 }
 
@@ -215,10 +233,23 @@ function renderProfessorProfiles(profiles = [], selectedUserId = '') {
             <span>${water.goal_ml ? `Meta ${(water.goal_ml / 1000).toLocaleString('pt-BR')} L` : 'Sem meta definida'}</span>
           </div>
         </div>
+        <div class="saude-student-card__metric">
+          <span class="saude-student-card__metric-label" aria-hidden="true">${assessmentEmoji(selected)}</span>
+          <div>
+            <small>Última avaliação</small>
+            <strong>${selected.latest_assessment
+              ? `IMC ${esc(Number(selected.latest_assessment.bmi).toLocaleString('pt-BR', { maximumFractionDigits: 1 }))}`
+              : 'Sem avaliação'}</strong>
+            <span>${selected.latest_assessment?.body_fat_pct != null
+              ? `${Number(selected.latest_assessment.body_fat_pct).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% gordura`
+              : (selected.assessment_count ? `${selected.assessment_count} registro(s)` : 'Registrar medidas')}</span>
+          </div>
+        </div>
       </div>
       <div class="saude-student-card__actions">
         <button class="saude-row-action is-primary" type="button" data-action="open-diets" data-id="${esc(id)}">🍽️ Dietas</button>
         <button class="saude-row-action" type="button" data-action="open-water" data-id="${esc(id)}">💧 Água</button>
+        <button class="saude-row-action" type="button" data-action="open-assessments" data-id="${esc(id)}">${assessmentEmoji(selected)} Avaliações</button>
       </div>
     </article>` : '<p class="saude-empty-row">Nenhum aluno ativo disponível.</p>'}
   </section>`;
@@ -242,11 +273,11 @@ function renderDietsList(profiles, diets = [], selectedUserId = '', isStudent = 
     const icon = '<svg viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false"><circle cx="40" cy="40" r="37" fill="#f1f5f9" stroke="#d5dee8" stroke-width="2"/><circle cx="40" cy="40" r="29" fill="#fff" stroke="#e2e8f0" stroke-width="2"/><path d="M23 32c-8-8 0-17 8-11 3-9 16-6 15 3 10 1 9 12 1 14L28 43c-9 0-13-7-5-11Z" fill="#59a84b"/><circle cx="29" cy="29" r="5" fill="#ee6652"/><circle cx="42" cy="30" r="4" fill="#ef8354"/><path d="M42 44c3-8 14-10 20-3 7 9-1 23-12 20-8-2-12-10-8-17Z" fill="#ce834b"/><path d="m48 43 9 8m-11-1 7 7" stroke="#a56438" stroke-width="2" stroke-linecap="round"/><path d="M20 48c2-9 18-8 20 1 3 12-22 15-20-1Z" fill="#f6e4b7"/><path d="m26 47 2 1m4-2 2 1m-8 5 2 1m5-2 2 1" stroke="#d9be87" stroke-width="2" stroke-linecap="round"/></svg>';
     const title = diet.titulo || diet.title || 'Dieta';
     if (isStudent) return `<li class="saude-diet-plan-card"><button type="button" class="saude-diet-plan-open" data-action="open-diet" data-id="${esc(diet.id)}">
-      <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
+      <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">${CHEVRON_ICON}</span>
     </button></li>`;
     const visible = diet.visible_to_student === true;
     return `<li class="saude-diet-plan-card saude-diet-list-row"><button type="button" class="saude-diet-plan-open" data-action="open-diet" data-id="${esc(diet.id)}">
-      <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">›</span>
+      <span class="saude-diet-plan-icon" aria-hidden="true">${icon}</span><span class="saude-diet-plan-main"><strong>${esc(title)}</strong><small>${esc(details)}</small></span><span class="saude-diet-plan-meta">${esc(meta)}</span><span class="fin-nav-row__chevron" aria-hidden="true">${CHEVRON_ICON}</span>
     </button><div class="saude-diet-list-status"><span>Status</span><button type="button" class="saude-diet-status-toggle${visible ? ' is-on' : ''}" data-action="toggle-diet-visibility" data-id="${esc(diet.id)}" data-visible="${visible}" aria-pressed="${visible}" aria-label="${visible ? 'Desativar' : 'Ativar'} dieta para o aluno">${visible ? 'On' : 'Off'}</button></div></li>`;
   }).join('');
   return `<section class="module-page">
@@ -286,11 +317,27 @@ function renderDietDetail(diet, { editable = false, profile = null, showWeek = f
   </section>`;
 }
 
-function mealEditorFields(meal, dayKey = '', current = null, { showTime = true } = {}) {
+function mealEditorFields(meal, dayKey = '', current = null, { showTime = true, open = false } = {}) {
   const prefix = dayKey ? `${dayKey}_` : '';
   const items = Array.isArray(current?.itens) ? current.itens : [];
   const storageName = `items_${prefix}${meal.tipo}`;
-  return `<fieldset class="saude-meal-editor"><legend><span aria-hidden="true">${mealEmoji(meal.tipo)}</span> ${esc(meal.titulo)}</legend>${showTime ? `<label>Horário<input type="time" name="${prefix}horario_${meal.tipo}" value="${esc(current?.horario || '')}"></label>` : ''}<div class="saude-food-items"><ul class="fin-list" data-food-items="${esc(storageName)}">${renderFoodItemRows(items, meal.tipo, dayKey)}</ul><input type="hidden" name="${storageName}" value="${esc(JSON.stringify(items))}"><button type="button" class="saude-btn" data-food-action="add" data-meal="${esc(meal.tipo)}" data-day="${esc(dayKey)}">➕ Adicionar alimento</button></div></fieldset>`;
+  const count = items.length;
+  const meta = count ? `${count} alimento${count === 1 ? '' : 's'}` : 'Vazia';
+  return `<details class="saude-meal-editor"${open ? ' open' : ''}>
+    <summary class="saude-meal-editor__summary">
+      <span class="saude-meal-editor__title"><span aria-hidden="true">${mealEmoji(meal.tipo)}</span> ${esc(meal.titulo)}</span>
+      <small class="saude-meal-editor__meta">${esc(meta)}</small>
+      <span class="saude-meal-editor__chevron" aria-hidden="true">${CHEVRON_FOLD}</span>
+    </summary>
+    <div class="saude-meal-editor__body">
+      ${showTime ? `<label>Horário<input type="time" name="${prefix}horario_${meal.tipo}" value="${esc(current?.horario || '')}"></label>` : ''}
+      <div class="saude-food-items">
+        <ul class="fin-list" data-food-items="${esc(storageName)}">${renderFoodItemRows(items, meal.tipo, dayKey)}</ul>
+        <input type="hidden" name="${storageName}" value="${esc(JSON.stringify(items))}">
+        <button type="button" class="saude-btn" data-food-action="add" data-meal="${esc(meal.tipo)}" data-day="${esc(dayKey)}">➕ Adicionar alimento</button>
+      </div>
+    </div>
+  </details>`;
 }
 
 function renderFoodItemRows(items = [], mealType, dayKey = '') {
@@ -311,29 +358,30 @@ function renderDietItemModal({ foods = [], item = null } = {}) {
   const selectedChip = selectedFood
     ? `<span class="saude-inline-tag" data-food-selected-chip><span aria-hidden="true">🥗</span> ${esc(selectedFood.item)}${selectedFood.categoria ? ` · ${esc(selectedFood.categoria)}` : ''}</span>`
     : '<span class="saude-inline-tag is-muted" data-food-selected-chip>🥗 Escolha um alimento</span>';
-  return `<div class="saude-modal-backdrop" data-food-modal><section class="saude-diet-modal" role="dialog" aria-modal="true" aria-labelledby="food-item-title"><header class="saude-diet-modal__header"><div><h2 id="food-item-title">${item ? '✏️ Editar alimento' : '🥗 Adicionar alimento'}</h2><p>Selecione um alimento do catálogo e informe a quantidade.</p></div><button class="saude-icon-btn" type="button" data-food-action="cancel" aria-label="Fechar">×</button></header><div class="saude-editor-form"><label class="saude-food-picker"><span class="saude-choice-label">🥗 Alimento</span>${selectedChip}<select data-food-field="food_id" required><option value="">Selecione um alimento</option>${foodOptions}</select>${foods.length ? '' : '<small>Catálogo indisponível. Você ainda pode informar o alimento manualmente.</small>'}</label>${foods.length ? '' : `<label>Nome do alimento<input data-food-field="nome" value="${esc(item?.nome || item?.item || '')}" placeholder="Ex.: Aveia"></label>`}<label>Quantidade<input data-food-field="quantidade_valor" type="number" min="0.01" max="10000" step="0.01" required value="${esc(item?.quantidade_valor ?? '')}"></label>${renderChoiceOptions({ name: 'quantidade_unidade', label: '📏 Unidade', value: unit, options: FOOD_UNIT_OPTIONS, fieldAttrs: 'data-food-field="quantidade_unidade"' })}<label>Observação (opcional)<textarea data-food-field="observacao" rows="2">${esc(item?.observacao || '')}</textarea></label><div class="saude-editor__actions"><button type="button" class="saude-btn" data-food-action="cancel">Cancelar</button><button type="button" class="saude-btn saude-btn--primary" data-food-action="save">Salvar alimento</button></div></div></section></div>`;
+  return `<div class="saude-modal-backdrop" data-food-modal><section class="saude-diet-modal" role="dialog" aria-modal="true" aria-labelledby="food-item-title"><header class="saude-diet-modal__header"><div><h2 id="food-item-title">${item ? '✏️ Editar alimento' : '🥗 Adicionar alimento'}</h2><p>Selecione um alimento do catálogo e informe a quantidade.</p></div><button class="saude-icon-btn" type="button" data-food-action="cancel" aria-label="Fechar">×</button></header><div class="saude-editor-form">${requiredLegend()}${foods.length ? `<label class="saude-food-picker"><span class="saude-choice-label">${labelWithRequired('🥗 Alimento', true)}</span>${selectedChip}<select data-food-field="food_id" required><option value="">Selecione um alimento</option>${foodOptions}</select></label>` : `<label>${labelWithRequired('Nome do alimento', true)}<input data-food-field="nome" required value="${esc(item?.nome || item?.item || '')}" placeholder="Ex.: Aveia"></label>`}<label>${labelWithRequired('Quantidade', true)}<input data-food-field="quantidade_valor" type="number" min="0.01" max="10000" step="0.01" required value="${esc(item?.quantidade_valor ?? '')}"></label>${renderChoiceOptions({ name: 'quantidade_unidade', label: '📏 Unidade', value: unit, required: true, options: FOOD_UNIT_OPTIONS, fieldAttrs: 'data-food-field="quantidade_unidade"' })}<label>Observação (opcional)<textarea data-food-field="observacao" rows="2">${esc(item?.observacao || '')}</textarea></label><div class="saude-editor__actions"><button type="button" class="saude-btn" data-food-action="cancel">Cancelar</button><button type="button" class="saude-btn saude-btn--primary" data-food-action="save">Salvar alimento</button></div></div></section></div>`;
 }
 
 function renderDietEditor({ diet = null, profiles = [], selectedUserId = '', editing = false, templateMode = false, foods = [], itemContext = null } = {}) {
   const selected = selectedUserId || profileId(profiles.find((profile) => profile.access !== false));
   const accessible = profiles.filter((profile) => profile.access !== false || profileId(profile) === String(selected));
   const mealSource = diet?.refeicoes || [];
-  const singleFields = DIET_MEALS.map((meal) => mealEditorFields(meal, '', mealSource.find((entry) => entry.tipo === meal.tipo))).join('');
+  const singleFields = DIET_MEALS.map((meal, index) => mealEditorFields(meal, '', mealSource.find((entry) => entry.tipo === meal.tipo), { open: index === 0 })).join('');
   const weekTimes = DIET_MEALS.map((meal) => {
     const value = DIET_WEEK.map((_, index) => (diet?.semana?.[index]?.refeicoes || []).find((entry) => entry.tipo === meal.tipo)?.horario || '').find(Boolean) || '';
     return `<label><span class="saude-week-times__label"><span aria-hidden="true">${mealEmoji(meal.tipo)}</span> ${esc(meal.titulo)}</span><input type="time" name="week_horario_${meal.tipo}" value="${esc(value)}"></label>`;
   }).join('');
   const weekFields = DIET_WEEK.map((day, dayIndex) => {
     const dayMeals = diet?.semana?.[dayIndex]?.refeicoes || [];
-    return `<details class="saude-week-day"${dayIndex === 0 ? ' open' : ''}><summary>${esc(day)}</summary><div class="saude-meal-editors">${DIET_MEALS.map((meal) => mealEditorFields(meal, `day${dayIndex}`, dayMeals.find((entry) => entry.tipo === meal.tipo), { showTime: false })).join('')}</div></details>`;
+    return `<details class="saude-week-day"${dayIndex === 0 ? ' open' : ''}><summary class="saude-week-day__summary"><span>${esc(day)}</span>${CHEVRON_FOLD}</summary><div class="saude-meal-editors">${DIET_MEALS.map((meal, mealIndex) => mealEditorFields(meal, `day${dayIndex}`, dayMeals.find((entry) => entry.tipo === meal.tipo), { showTime: false, open: dayIndex === 0 && mealIndex === 0 })).join('')}</div></details>`;
   }).join('');
   const formatValue = diet?.semanal ? 'weekly' : 'single';
   const studentField = templateMode ? '' : renderStudentDrill(accessible, selected, { name: 'user_id', required: true, disabled: editing });
   return `<div class="saude-modal-backdrop"><section class="saude-diet-modal" role="dialog" aria-modal="true" aria-labelledby="diet-editor-title">
     <header class="saude-diet-modal__header"><div><h2 id="diet-editor-title">${templateMode ? (editing ? '✏️ Editar modelo' : '➕ Novo modelo de dieta') : editing ? '✏️ Editar dieta' : '➕ Nova dieta'}</h2><p>${templateMode ? 'Modelo reutilizável do seu portfólio, sem vínculo com aluno.' : 'Monte o plano e organize as refeições do aluno.'}</p></div><button class="saude-icon-btn" type="button" data-action="cancel-editor" aria-label="Fechar">×</button></header>
     <form class="saude-editor-form" data-diet-editor data-template-mode="${templateMode}">
+      ${requiredLegend()}
       ${studentField}
-      <label>📝 ${templateMode ? 'Nome do modelo' : 'Nome da dieta'}<input name="titulo" required maxlength="100" value="${esc(diet?.titulo || diet?.title || '')}" placeholder="Ex.: Plano alimentar" /></label>
+      <label>${labelWithRequired(`📝 ${templateMode ? 'Nome do modelo' : 'Nome da dieta'}`, true)}<input name="titulo" required maxlength="100" value="${esc(diet?.titulo || diet?.title || '')}" placeholder="Ex.: Plano alimentar" /></label>
       <label>🎯 Objetivo<input name="objetivo" maxlength="200" value="${esc(diet?.objetivo || '')}" placeholder="Ex.: rotina equilibrada" /></label>
       ${renderChoiceOptions({ name: 'formato', label: '📋 Formato do plano', value: formatValue, options: DIET_FORMAT_OPTIONS, variant: 'cards', fieldAttrs: 'data-diet-format', help: `<small class="saude-format-help" data-format-help>${diet?.semanal ? 'Cada dia tem seu próprio cardápio. Os horários valem para segunda a domingo.' : 'O mesmo cardápio e os mesmos horários valem para todos os dias.'}</small>` })}
       <label>🔥 Meta calórica diária (kcal)<input type="number" name="meta_calorias" min="500" max="10000" step="1" value="${esc(diet?.meta_calorias ?? '')}" placeholder="Opcional · ex. 2000" /></label>
@@ -413,13 +461,27 @@ function renderWater(water, { editable = false, canSetGoal = false, showBack = f
     <header class="module-heading"><div><span class="eyebrow">ACOMPANHAMENTO DE ÁGUA</span><h1>💧 ${esc(title)}${userName ? ` · ${esc(userName)}` : ''}</h1><p>${editable ? 'Registre cada consumo ao longo do dia.' : 'Meta e consumo diário do aluno.'}</p></div></header>
     <div class="saude-water-overview"><div class="saude-water-main"><small>💧 CONSUMO DE HOJE</small><strong>${(total / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} L</strong><span>${goal ? `🎯 ${esc(water.nome || 'Meta diária')} · ${(goal / 1000).toLocaleString('pt-BR')} L · ${percent}%` : '🎯 Meta ainda não definida'}</span></div>${renderWaterDropHtml({ meta_ml: goal, realizado_ml: total })}<div class="saude-water-progress" role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><span style="width:${percent}%"></span></div></div>
     <p class="saude-water-status${complete ? ' is-complete' : ''}">${status}</p>
-    ${canSetGoal ? `<form class="saude-goal-editor fin-list" data-water-goal data-user-id="${esc(userId)}"><p class="fin-section-label">${goal ? '🎯 Meta oficial de água' : '🎯 Definir meta oficial de água'}</p><label for="water-name-input">Nome da meta</label><input id="water-name-input" name="nome" maxlength="80" required value="${esc(water.nome || 'Meta diária')}" placeholder="Ex.: Meta diária"><label for="water-goal-input">Meta diária (ml)</label><div><input id="water-goal-input" name="goal_ml" type="number" min="100" max="10000" step="100" required value="${goal || 2000}"><button type="submit" class="saude-btn saude-btn--primary">${goal ? 'Atualizar meta oficial' : 'Salvar meta oficial'}</button>${goal ? '<button type="button" class="saude-btn saude-btn--danger" data-action="delete-water-goal">Excluir meta oficial</button>' : ''}</div><small>Existe uma meta oficial por aluno. Salvar substitui o valor atual.</small></form>` : ''}
+    ${canSetGoal ? `<form class="saude-goal-editor fin-list" data-water-goal data-user-id="${esc(userId)}">
+      <p class="fin-section-label">${goal ? '🎯 Meta oficial de água' : '🎯 Definir meta oficial de água'}</p>
+      ${requiredLegend()}
+      <label class="saude-goal-editor__field" for="water-name-input"><span>${labelWithRequired('Nome da meta', true)}</span>
+        <input id="water-name-input" name="nome" maxlength="80" required value="${esc(water.nome || 'Meta diária')}" placeholder="Ex.: Meta diária">
+      </label>
+      <label class="saude-goal-editor__field" for="water-goal-input"><span>${labelWithRequired('Meta diária (ml)', true)}</span>
+        <input id="water-goal-input" name="goal_ml" type="number" min="100" max="10000" step="100" required value="${goal || 2000}">
+      </label>
+      <div class="saude-goal-editor__actions">
+        <button type="submit" class="saude-btn saude-btn--primary">${goal ? 'Atualizar' : 'Salvar'}</button>
+        ${goal ? '<button type="button" class="saude-btn saude-btn--danger" data-action="delete-water-goal">Excluir</button>' : ''}
+      </div>
+      <small>Uma meta por aluno · salvar substitui a atual.</small>
+    </form>` : ''}
     ${editable ? `<div class="saude-water-checkin"><p class="fin-section-label">💧 Registrar consumo</p>${goal ? `<ul class="saude-water-checks">${WATER_AMOUNTS_ML.map((amount) => `<li><button type="button" class="saude-water-check" data-action="add-water" data-id="${amount}" aria-label="Registrar ${esc(waterAmountLabel(amount))}"><span aria-hidden="true">${waterEmoji(amount)}</span><strong>${esc(waterAmountLabel(amount))}</strong></button></li>`).join('')}</ul>` : '<p class="saude-empty-row">🎯 Seu professor ainda não configurou uma meta de água.</p>'}</div>` : ''}
-    <details class="saude-water-log"><summary class="saude-water-log__summary"><span>📝 Registros de hoje · ${checkins.length}</span><span class="saude-water-log__chevron" aria-hidden="true">›</span></summary><ul class="saude-water-log__list">${entries || '<li class="saude-water-log__empty">💧 Nenhum consumo registrado hoje.</li>'}</ul></details>
+    <details class="saude-water-log"><summary class="saude-water-log__summary"><span>📝 Registros de hoje · ${checkins.length}</span><span class="saude-water-log__chevron" aria-hidden="true">${CHEVRON_FOLD}</span></summary><ul class="saude-water-log__list">${entries || '<li class="saude-water-log__empty">💧 Nenhum consumo registrado hoje.</li>'}</ul></details>
   </section>`;
 }
 
-function renderStudentLanding({ diets = [], water = null } = {}) {
+function renderStudentLanding({ diets = [], water = null, assessments = [], profile = null } = {}) {
   const dietCount = diets.length;
   const waterTotal = Number(water?.total_ml || 0);
   const waterGoal = Number(water?.goal_ml || 0);
@@ -428,8 +490,10 @@ function renderStudentLanding({ diets = [], water = null } = {}) {
     : waterTotal
       ? `${(waterTotal / 1000).toLocaleString('pt-BR')} L hoje`
       : 'Registrar consumo de água';
+  const assessmentCount = Array.isArray(assessments) ? assessments.length : 0;
+  const avIcon = assessmentEmoji(profile);
   return `<section class="module-page saude-home-page">
-    <header class="module-heading"><div><span class="eyebrow">MINHA SAÚDE</span><h1>🏠 Início</h1><p>Escolha por onde começar: dieta ou água.</p></div></header>
+    <header class="module-heading"><div><span class="eyebrow">MINHA SAÚDE</span><h1>🏠 Início</h1><p>Escolha por onde começar.</p></div></header>
     <div class="saude-home-grid">
       <button type="button" class="saude-home-card" data-module="diets">
         <span class="saude-home-card__icon" aria-hidden="true">🥗</span>
@@ -443,6 +507,12 @@ function renderStudentLanding({ diets = [], water = null } = {}) {
         <span>Meta e consumo diário.</span>
         <small>${esc(waterLabel)}</small>
       </button>
+      <button type="button" class="saude-home-card" data-module="assessments">
+        <span class="saude-home-card__icon" aria-hidden="true">${avIcon}</span>
+        <strong>Avaliações</strong>
+        <span>IMC e composição corporal.</span>
+        <small>${assessmentCount} registro${assessmentCount === 1 ? '' : 's'}</small>
+      </button>
     </div>
   </section>`;
 }
@@ -452,7 +522,13 @@ function renderStudentHome(state) {
   if (state.module === 'water') return renderWater(state.water, { editable: true, title: 'Minha água' });
   if (state.module === 'diet-detail') return renderDietDetail(state.diet, { foods: state.foods || [] });
   if (state.module === 'diets') return renderDietsList(state.profiles, diets, state.selectedUserId, true);
-  return renderStudentLanding({ diets, water: state.water });
+  if (state.module === 'assessments') {
+    return renderAssessmentList({ profile: state.user, assessments: state.assessments || [], editable: false });
+  }
+  if (state.module === 'assessment-detail') {
+    return renderAssessmentDetail(state.assessment, { editable: false, profile: state.user, assessments: state.assessments || [] });
+  }
+  return renderStudentLanding({ diets, water: state.water, assessments: state.assessments || [], profile: state.user });
 }
 
 function ensureWaterDropStyles() {
@@ -530,12 +606,12 @@ function renderAccountEditor(account = null, professors = []) {
     });
   const showProfessorLink = role === 'student';
   const professorField = renderProfessorDrill(activeProfessors, account?.professor_id || activeProfessors[0]?.id || '', { required: showProfessorLink });
-  const professorBlock = `<div data-professor-link-field${showProfessorLink ? '' : ' hidden'}><span class="saude-choice-label">🩺 Professor responsável</span>${professorField}${activeProfessors.length ? '' : '<p class="saude-empty-row">Cadastre um professor ativo antes de vincular alunos.</p>'}</div>`;
+  const professorBlock = `<div data-professor-link-field${showProfessorLink ? '' : ' hidden'}>${professorField}${activeProfessors.length ? '' : '<p class="saude-empty-row">Cadastre um professor ativo antes de vincular alunos.</p>'}</div>`;
   const phoneValue = formatBrazilPhone(account?.phone || account?.telefone || '') || String(account?.phone || account?.telefone || '');
   const phoneField = role === 'admin'
     ? ''
-    : `<label>📱 Telefone<input name="phone" type="tel" maxlength="20" required autocomplete="tel" inputmode="numeric" placeholder="27988516301" value="${esc(phoneValue)}"></label>`;
-  return `<section class="module-page"><button class="back-link" type="button" data-module="accounts">‹ Voltar para contas</button><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>${editing ? '✏️ Editar conta' : '➕ Nova conta'}</h1><p>${editing ? 'Atualize os dados do acesso.' : 'Cadastre um acesso de professor ou aluno.'}</p></div></header><form class="saude-student-form fin-list" data-account-form data-editing="${editing}" data-id="${esc(account?.id ?? account?.user_id ?? '')}"><label>👤 Nome<input name="name" maxlength="80" required autocomplete="name" value="${esc(account?.name || account?.nome || '')}"></label><label>✉️ E-mail<input name="email" type="email" maxlength="160" required autocomplete="email" value="${esc(account?.email || '')}"></label>${phoneField}${roleField}${professorBlock}${editing ? '' : '<p class="saude-empty-row">Após criar a conta, enviamos um e-mail com o link para a pessoa criar a senha.</p>'}<button type="submit" class="saude-btn saude-btn--primary">${editing ? 'Salvar alterações' : 'Criar conta e enviar convite'}</button></form></section>`;
+    : `<label><span>${labelWithRequired('📱 Telefone', true)}</span><input name="phone" type="tel" maxlength="20" required autocomplete="tel" inputmode="numeric" placeholder="27988516301" value="${esc(phoneValue)}"></label>`;
+  return `<section class="module-page"><button class="back-link" type="button" data-module="accounts">‹ Voltar para contas</button><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>${editing ? '✏️ Editar conta' : '➕ Nova conta'}</h1><p>${editing ? 'Atualize os dados do acesso.' : 'Cadastre um acesso de professor ou aluno.'}</p></div></header><form class="saude-student-form fin-list" data-account-form data-editing="${editing}" data-id="${esc(account?.id ?? account?.user_id ?? '')}">${requiredLegend()}<label><span>${labelWithRequired('👤 Nome', true)}</span><input name="name" maxlength="80" required autocomplete="name" value="${esc(account?.name || account?.nome || '')}"></label><label><span>${labelWithRequired('✉️ E-mail', true)}</span><input name="email" type="email" maxlength="160" required autocomplete="email" value="${esc(account?.email || '')}"></label>${phoneField}${roleField}${professorBlock}${editing ? '' : '<p class="saude-empty-row">Após criar a conta, enviamos um e-mail com o link para a pessoa criar a senha.</p>'}<button type="submit" class="saude-btn saude-btn--primary">${editing ? 'Salvar alterações' : 'Criar conta e enviar convite'}</button></form></section>`;
 }
 
 function renderObservability(metrics = {}) {
@@ -577,7 +653,7 @@ function renderAdminHome({ accounts = [], metrics = null } = {}) {
   </section>`;
 }
 
-export function renderSaudeContent(container, { state, onNavigate, onCreateDiet, onDeleteDiet, onEditDiet, onSetDietVisibility, onWaterGoal, onWaterAmount, onCreateAccount, onEditAccount, onDeleteAccount, onAccountAccess, onRegeneratePassword, onSaveTemplate, onDeleteTemplate, onUseTemplate, onLogout }) {
+export function renderSaudeContent(container, { state, onNavigate, onCreateDiet, onDeleteDiet, onEditDiet, onSetDietVisibility, onWaterGoal, onWaterAmount, onCreateAccount, onEditAccount, onDeleteAccount, onAccountAccess, onRegeneratePassword, onSaveTemplate, onDeleteTemplate, onUseTemplate, onSaveAssessment, onDeleteAssessment, onLogout }) {
   const admin = state.user?.role === 'admin';
   const professor = state.user?.role === 'professor';
   const homeModule = 'home';
@@ -609,6 +685,16 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     else if (state.module === 'diet-detail') content = renderDietDetail(state.diet, { editable: true, profile, showWeek: true, foods: state.foods || [] });
     else if (state.module === 'diets') content = renderDietsList(state.profiles, state.diets, state.selectedUserId);
     else if (state.module === 'monitor') content = renderWater(state.monitor?.water, { editable: false, canSetGoal: true, showBack: true, userId: state.monitor?.user?.id || state.selectedUserId, title: 'Água', userName: profileName(state.monitor?.user || profile), error: state.moduleError });
+    else if (state.module === 'assessments') content = renderAssessmentList({ profile, assessments: state.assessments || [], editable: true });
+    else if (state.module === 'assessment-detail') content = renderAssessmentDetail(state.assessment, { editable: true, profile, assessments: state.assessments || [] });
+    else if (state.module === 'createAssessment') content = renderAssessmentEditor({ profile, assessment: state.assessmentDraft || null });
+    else if (state.module === 'editAssessment') content = renderAssessmentEditor({ profile, assessment: state.assessmentDraft || state.assessment, editing: true });
+    else if (state.module === 'compareAssessments') content = renderAssessmentCompare({
+      profile,
+      assessments: state.assessments || [],
+      fromId: state.compareFromId,
+      toId: state.compareToId,
+    });
     else if (state.module === 'users') content = renderProfessorProfiles(state.profiles, state.selectedUserId);
     else content = renderProfessorHome({ profiles: state.profiles || [], templates: state.templates || [] });
   } else content = renderStudentHome(state);
@@ -778,6 +864,58 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   });
   container.querySelectorAll('[data-action="open-diets"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('diets', button.dataset.id)));
   container.querySelectorAll('[data-action="open-water"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('monitor', button.dataset.id)));
+  container.querySelectorAll('[data-action="open-assessments"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('assessments', button.dataset.id)));
+  container.querySelectorAll('[data-action="open-assessment"]').forEach((button) => button.addEventListener('click', () => {
+    state.assessment = (state.assessments || []).find((item) => String(item.id) === String(button.dataset.id)) || null;
+    onNavigate?.('assessment-detail', state.selectedUserId || button.dataset.id);
+  }));
+  container.querySelectorAll('[data-action="new-assessment"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.assessmentDraft = null;
+      onNavigate?.('createAssessment', state.selectedUserId);
+    });
+  });
+  container.querySelectorAll('[data-action="edit-assessment"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.assessment = (state.assessments || []).find((item) => String(item.id) === String(button.dataset.id)) || state.assessment;
+      state.assessmentDraft = state.assessment;
+      onNavigate?.('editAssessment', state.selectedUserId);
+    });
+  });
+  container.querySelectorAll('[data-action="delete-assessment"]').forEach((button) => button.addEventListener('click', async () => {
+    if (await confirmAction('O histórico desta medição será removido.', { title: 'Excluir avaliação?', confirmLabel: 'Excluir' })) {
+      onDeleteAssessment?.(button.dataset.id, state.selectedUserId);
+    }
+  }));
+  container.querySelectorAll('[data-action="back-to-assessments"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('assessments', state.selectedUserId)));
+  container.querySelectorAll('[data-action="compare-assessments"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('compareAssessments', state.selectedUserId)));
+  container.querySelectorAll('[data-action="download-assessment-pdf"]').forEach((button) => button.addEventListener('click', () => {
+    const assessment = (state.assessments || []).find((item) => String(item.id) === String(button.dataset.id)) || state.assessment;
+    const profile = state.user?.role === 'professor' || state.user?.role === 'admin'
+      ? currentProfile(state)
+      : state.user;
+    const opened = openAssessmentPdfReport({
+      assessment,
+      profile,
+      assessments: state.assessments || [],
+    });
+    if (!opened) showToast('Não foi possível gerar o PDF. Tente de novo.', { type: 'error' });
+  }));
+  container.querySelector('[data-assessment-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const editing = form.dataset.editing === 'true';
+    onSaveAssessment?.(data, state.selectedUserId, editing ? form.dataset.id : null);
+  });
+  container.querySelector('[data-compare-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form).entries());
+    state.compareFromId = data.from_id;
+    state.compareToId = data.to_id;
+    onNavigate?.('compareAssessments', state.selectedUserId);
+  });
   container.querySelectorAll('[data-action="new-diet"]').forEach((button) => button.addEventListener('click', () => onNavigate?.('createDiet', button.dataset.id)));
   container.querySelectorAll('[data-action="open-template"]').forEach((button) => button.addEventListener('click', () => {
     state.template = (state.templates || []).find((item) => String(item.id) === String(button.dataset.id)) || null;

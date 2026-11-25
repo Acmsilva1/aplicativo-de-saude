@@ -5,6 +5,7 @@ import {
   supportsPlatformAuth,
 } from './biometric.js';
 import { LOGIN_TRIAL_NOTE } from '../../lib/trial.js';
+import { labelWithRequired, requiredLegend } from '../../lib/formRequired.js';
 import appInfo from '../../package.json';
 
 export function renderLogin(container, {
@@ -47,9 +48,10 @@ export function renderLogin(container, {
           <p class="login-trial-note">${LOGIN_TRIAL_NOTE}</p>
           <div class="login-access-card">
             <form id="login-form" class="login-form" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
-              <label for="email">E-mail</label>
+              ${requiredLegend()}
+              <label for="email">${labelWithRequired('E-mail', true)}</label>
               <input id="email" name="email" type="email" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="voce@exemplo.com" required />
-              <label for="password">Senha</label>
+              <label for="password">${labelWithRequired('Senha', true)}</label>
               <div class="password-field"><input id="password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required /><button type="button" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false"><span class="password-toggle-icon password-toggle-icon--show" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M1.5 10s2.8-5.5 8.5-5.5S18.5 10 18.5 10s-2.8 5.5-8.5 5.5S1.5 10 1.5 10Z"/><circle cx="10" cy="10" r="2.4"/></svg></span><span class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3 4 17 16"/><path d="M5.2 6.4A11.6 11.6 0 0 0 1.5 10s2.8 5.5 8.5 5.5c1.4 0 2.7-.3 3.8-.8"/><path d="M8.1 5.6A4.5 4.5 0 0 1 10 5c3.2 0 5.8 2.6 5.8 5.8 0 .7-.1 1.3-.3 1.9"/><path d="M10 14.5A4.5 4.5 0 0 1 5.5 10c0-.5.1-1 .2-1.4"/></svg></span></button></div>
               ${biometricSupported ? `
               <label class="login-biometric-toggle">

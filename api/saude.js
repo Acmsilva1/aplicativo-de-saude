@@ -122,6 +122,31 @@ export default async function handler(req, res) {
         return res.json(await store.setWaterGoal(id, goal, req.body.nome));
       }
     }
+    if (resource === 'professor-avaliacoes' && professor && req.method === 'GET') {
+      const result = await store.getProfessorAssessments(user.id, id);
+      return result
+        ? res.json(result)
+        : res.status(404).json({ error: 'Aluno não encontrado ou não vinculado ao seu perfil de professor.' });
+    }
+    if (resource === 'professor-avaliacao' && professor) {
+      const assessmentId = String(req.body?.id || req.query.id || '');
+      if (req.method === 'DELETE') {
+        return (await store.deleteAssessment(id, assessmentId))
+          ? res.json({ ok: true })
+          : res.status(404).json({ error: 'Avaliação não encontrada.' });
+      }
+      if (['POST', 'PATCH'].includes(req.method)) {
+        if (req.method === 'PATCH' && !assessmentId) {
+          return res.status(400).json({ error: 'Selecione a avaliação.' });
+        }
+        const result = await store.saveAssessment(id, req.body, req.method === 'PATCH' ? assessmentId : null);
+        if (result?.error) return res.status(400).json({ error: result.error });
+        return res.status(req.method === 'POST' ? 201 : 200).json(result);
+      }
+    }
+    if (resource === 'avaliacoes' && !professor && req.method === 'GET') {
+      return res.json({ assessments: await store.getAssessments(id) });
+    }
     if (resource === 'agua' && !professor && req.method === 'GET') {
       return res.json(await store.getWater(id));
     }
