@@ -73,9 +73,31 @@ async function getCredential(credentialId) {
   return data || null;
 }
 
+async function setBiometriaHabilitada(userId, enabled) {
+  if (useMockData() || !userId) return;
+  try {
+    await getSupabaseAdmin()
+      .from('health_user_profiles')
+      .update({ biometria_habilitada: Boolean(enabled) })
+      .eq('user_id', userId);
+  } catch {
+    /* coluna pode ainda não existir em ambientes sem a migration */
+  }
+}
+
 async function saveCredential(row) {
-  if (useMockData()) return mock.saveWebAuthnCredential(row);
-  const { error } = await getSupabaseAdmin().from('health_webauthn_credentials').upsert({
+  if (useMockData()) {
+    mock.saveWebAuthnCredential(row);
+    return;
+  }
+  const admin = getSupabaseAdmin();
+  // Uma digital ↔ um usuário: remove outras credenciais da mesma conta.
+  await admin
+    .from('health_webauthn_credentials')
+    .delete()
+    .eq('user_id', row.user_id)
+    .neq('credential_id', row.credential_id);
+  const { error } = await admin.from('health_webauthn_credentials').upsert({
     credential_id: row.credential_id,
     user_id: row.user_id,
     public_key: row.public_key,
@@ -86,16 +108,24 @@ async function saveCredential(row) {
     updated_at: new Date().toISOString(),
   });
   if (error) throw error;
+  await setBiometriaHabilitada(row.user_id, true);
 }
 
 async function deleteCredential(credentialId, userId) {
-  if (useMockData()) return mock.deleteWebAuthnCredential(credentialId, userId);
+  if (useMockData()) {
+    mock.deleteWebAuthnCredential(credentialId, userId);
+    const remaining = mock.listWebAuthnCredentials(userId);
+    if (!remaining.length) await setBiometriaHabilitada(userId, false);
+    return true;
+  }
   const { error } = await getSupabaseAdmin()
     .from('health_webauthn_credentials')
     .delete()
     .eq('credential_id', credentialId)
     .eq('user_id', userId);
   if (error) throw error;
+  const remaining = await listCredentials(userId);
+  await setBiometriaHabilitada(userId, remaining.length > 0);
   return true;
 }
 

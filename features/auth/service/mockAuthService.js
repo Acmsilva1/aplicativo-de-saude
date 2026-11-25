@@ -248,6 +248,12 @@ export function getWebAuthnCredential(credentialId) {
 }
 
 export function saveWebAuthnCredential(row) {
+  // Uma digital ↔ um usuário (igual ao índice único no Postgres).
+  for (const [id, current] of webauthnCredentials.entries()) {
+    if (current.user_id === row.user_id && id !== row.credential_id) {
+      webauthnCredentials.delete(id);
+    }
+  }
   webauthnCredentials.set(row.credential_id, { ...row });
 }
 

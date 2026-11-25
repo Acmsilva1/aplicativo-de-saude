@@ -1,5 +1,6 @@
 import { formFeedback, authErrorMessage } from './formFeedback.js';
 import {
+  hasSavedDeviceUser,
   readBiometricPreference,
   supportsPlatformAuth,
 } from './biometric.js';
@@ -10,12 +11,8 @@ import appInfo from '../../package.json';
 export function renderLogin(container, {
   onLogin,
   error = '',
-  biometricSupported = false,
-  preferBiometric = false,
 } = {}) {
   const pref = readBiometricPreference();
-  // No mobile, biometria vem marcada por padrão (desmarcar é a exceção).
-  const toggleChecked = biometricSupported && preferBiometric !== false;
   container.innerHTML = `
     <main class="login-layout">
       <section class="login-story" aria-label="Ritmo Saúde">
@@ -53,19 +50,11 @@ export function renderLogin(container, {
               <input id="email" name="email" type="email" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="voce@exemplo.com" required />
               <label for="password">${labelWithRequired('Senha', true)}</label>
               <div class="password-field"><input id="password" name="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required /><button type="button" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false"><span class="password-toggle-icon password-toggle-icon--show" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M1.5 10s2.8-5.5 8.5-5.5S18.5 10 18.5 10s-2.8 5.5-8.5 5.5S1.5 10 1.5 10Z"/><circle cx="10" cy="10" r="2.4"/></svg></span><span class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3 4 17 16"/><path d="M5.2 6.4A11.6 11.6 0 0 0 1.5 10s2.8 5.5 8.5 5.5c1.4 0 2.7-.3 3.8-.8"/><path d="M8.1 5.6A4.5 4.5 0 0 1 10 5c3.2 0 5.8 2.6 5.8 5.8 0 .7-.1 1.3-.3 1.9"/><path d="M10 14.5A4.5 4.5 0 0 1 5.5 10c0-.5.1-1 .2-1.4"/></svg></span></button></div>
-              ${biometricSupported ? `
-              <label class="login-biometric-toggle">
-                <input type="checkbox" name="enable_biometric" ${toggleChecked ? 'checked' : ''} />
-                <span>
-                  <strong>Usar digital ou Face ID neste aparelho</strong>
-                  <small>Salva este usuário: nos próximos acessos você entra direto com biometria.</small>
-                </span>
-              </label>` : ''}
               <button class="button button--primary login-submit" type="submit"><span>Entrar</span><span aria-hidden="true">↗</span></button>
             </form>
           </div>
           <p class="login-privacy"><span aria-hidden="true">●</span> Acesso protegido à sua conta</p>
-          <p class="login-version">Versão ${appInfo.version}${pref?.preferred ? ' · Biometria ativa neste aparelho' : ''}</p>
+          <p class="login-version">Versão ${appInfo.version}${hasSavedDeviceUser() || pref?.credentialId ? ' · Biometria ativa neste aparelho' : ''}</p>
         </div>
       </section>
     </main>`;
@@ -94,9 +83,6 @@ export function renderLogin(container, {
     feedback.clear();
     const email = loginForm.elements.namedItem('email');
     const password = loginForm.elements.namedItem('password');
-    const biometricField = loginForm.elements.namedItem('enable_biometric');
-    // true/false quando o toggle existe; null quando biometria não está disponível na UI.
-    const enableBiometric = biometricField ? Boolean(biometricField.checked) : null;
     if (!email.value.trim() || email.validity.typeMismatch) { feedback.show('Informe um e-mail válido.', email); return; }
     if (!password.value) { feedback.show('Informe sua senha.', password); return; }
     const button = loginForm.querySelector('.login-submit');
@@ -108,7 +94,6 @@ export function renderLogin(container, {
       await onLogin?.({
         email: email.value.trim(),
         password: password.value,
-        enableBiometric,
       });
     } catch (cause) { feedback.show(authErrorMessage(cause)); }
     finally {

@@ -10,7 +10,6 @@ import {
   enrollBiometric,
   hasDeclinedBiometricOffer,
   hasSavedDeviceUser,
-  isBiometricPreferred,
   isMobileDevice,
   markBiometricOfferDeclined,
   persistBiometricLogin,
@@ -280,9 +279,13 @@ async function activateBiometricForCurrentUser({busyTitle='Ativando biometria',b
 async function maybeOfferBiometric(){
  if(!state.pendingBiometricOffer||!state.user||state.user.must_change_password)return;
  state.pendingBiometricOffer=false;
- if(!state.biometricSupported||isBiometricPreferred()||hasDeclinedBiometricOffer(state.user.id))return;
+ if(!state.biometricSupported)return;
+ // Já tem usuário padrão neste aparelho para esta conta → não pergunta de novo.
+ const pref=readBiometricPreference();
+ if(pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false)return;
+ if(hasDeclinedBiometricOffer(state.user.id))return;
  const accepted=await confirmAction(
-  'Nos próximos acessos você entra só com a digital ou o Face ID deste aparelho.',
+  'Nos próximos acessos (ao sair ou expirar a sessão) você entra só com a digital ou o Face ID — sem digitar e-mail e senha.',
   {title:'Usar digital ou Face ID?',confirmLabel:'Ativar biometria',tone:'primary'},
  );
  if(!accepted){
@@ -351,19 +354,19 @@ async function logout(){
 }
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
-function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:true,onLogin:async({email,password,enableBiometric})=>{
+function auth(error=''){renderLogin(app,{error,onLogin:async({email,password})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
-  const pref=readBiometricPreference();
   state.pendingBiometricEnroll=false;
-  state.pendingBiometricOffer=false;
-  // Flag vem marcada por padrão: coleta (ou reutiliza) e salva usuário prioritário do aparelho.
-  if(enableBiometric===true&&state.biometricSupported&&!state.user.must_change_password){
-   await activateBiometricForCurrentUser();
-  }else if(enableBiometric===false){
-   if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
-    await revokeBiometric(request,pref.credentialId);
-   }
-   // Sem flag: não oferece popup — usuário desmarcou de propósito.
+  // Sem flag na tela: após e-mail/senha, oferece biometria (padrão do app no mobile).
+  const pref=readBiometricPreference();
+  const alreadyBound=pref?.credentialId&&String(pref.userId)===String(state.user.id)&&pref.preferred!==false;
+  if(alreadyBound){
+   rememberBiometricUser(pref.credentialId);
+   state.pendingBiometricOffer=false;
+  }else if(state.biometricSupported&&!state.user.must_change_password){
+   state.pendingBiometricOffer=true;
+  }else{
+   state.pendingBiometricOffer=false;
   }
   forcePasswordLogin=false;
   await enter();
