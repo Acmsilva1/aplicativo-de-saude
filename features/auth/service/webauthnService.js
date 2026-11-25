@@ -228,6 +228,18 @@ export async function verifyWebAuthnLogin(req, res, body = {}) {
   return { user: account };
 }
 
+export async function listWebAuthnCredentials(user) {
+  if (!user?.id) return { error: 'Sessão encerrada. Entre novamente.' };
+  const rows = await listCredentials(user.id);
+  return {
+    credentials: rows.map((row) => ({
+      credentialId: row.credential_id,
+      deviceType: row.device_type || null,
+      transports: row.transports || [],
+    })),
+  };
+}
+
 export async function revokeWebAuthnCredential(user, body = {}) {
   if (!user?.id) return { error: 'Sessão encerrada. Entre novamente.' };
   const credentialId = String(body.credentialId || body.credential_id || '').trim();

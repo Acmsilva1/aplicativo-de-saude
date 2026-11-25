@@ -75,5 +75,6 @@ export {
   verifyWebAuthnRegistration,
   getWebAuthnLoginOptions,
   verifyWebAuthnLogin,
+  listWebAuthnCredentials,
   revokeWebAuthnCredential,
 } from './webauthnService.js';

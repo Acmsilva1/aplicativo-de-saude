@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'ritmo_saude_biometric';
 const STORAGE_BACKUP_KEY = 'ritmo_saude_biometric_backup';
+const COOKIE_KEY = 'ritmo_saude_biometric';
 
 function bufferToBase64Url(value) {
   const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value || []);
@@ -36,8 +37,38 @@ function readFromStore(store) {
   }
 }
 
+function readFromCookie() {
+  try {
+    const match = String(document.cookie || '').match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
+    if (!match) return null;
+    return parsePreference(decodeURIComponent(match[1]));
+  } catch {
+    return null;
+  }
+}
+
+function writeCookie(payload) {
+  try {
+    const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${COOKIE_KEY}=${encodeURIComponent(payload)}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearCookie() {
+  try {
+    document.cookie = `${COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+  } catch {
+    /* ignore */
+  }
+}
+
 export function readBiometricPreference() {
-  return readFromStore(window.localStorage) || readFromStore(window.sessionStorage);
+  return readFromStore(window.localStorage)
+    || readFromStore(window.sessionStorage)
+    || readFromCookie();
 }
 
 export function writeBiometricPreference(value) {
@@ -61,10 +92,11 @@ export function writeBiometricPreference(value) {
   } catch {
     /* ignore */
   }
+  if (writeCookie(payload)) saved = true;
   const verify = readBiometricPreference();
   if (!saved || !verify) return false;
-  if (value.credentialId && verify.credentialId !== value.credentialId) return false;
-  if (value.preferred && !verify.preferred) return false;
+  if (value.credentialId && String(verify.credentialId) !== String(value.credentialId)) return false;
+  if (value.preferred && verify.preferred === false) return false;
   return true;
 }
 
@@ -73,11 +105,15 @@ export function clearBiometricPreference() {
   try { localStorage.removeItem(STORAGE_BACKUP_KEY); } catch { /* ignore */ }
   try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   try { sessionStorage.removeItem(STORAGE_BACKUP_KEY); } catch { /* ignore */ }
+  clearCookie();
 }
 
+/** Tem credencial neste aparelho e não foi desligada de propósito. */
 export function isBiometricPreferred() {
   const pref = readBiometricPreference();
-  return Boolean(pref?.preferred && pref?.credentialId);
+  if (!pref?.credentialId) return false;
+  if (pref.preferred === false) return false;
+  return true;
 }
 
 export function hasDeclinedBiometricOffer(userId = '') {
@@ -222,14 +258,24 @@ export async function revokeBiometric(request, credentialId) {
   return { ok: true };
 }
 
-export function persistBiometricLogin(userId, credentialId) {
+export function persistBiometricLogin(userId, credentialId, profile = {}) {
+  const id = String(credentialId || '').trim();
+  if (!id) throw Error('Credencial biométrica inválida.');
+  const current = readBiometricPreference() || {};
+  const userName = String(profile.name || profile.nome || current.userName || '').trim();
+  const userEmail = String(profile.email || current.userEmail || '').trim().toLowerCase();
   const ok = writeBiometricPreference({
+    ...current,
     userId,
-    credentialId,
+    credentialId: id,
     preferred: true,
     offerDeclined: false,
+    userName,
+    userEmail,
     updatedAt: new Date().toISOString(),
   });
-  if (!ok) throw Error('Não foi possível salvar a preferência de biometria neste aparelho.');
+  if (!ok || !isBiometricPreferred()) {
+    throw Error('Não foi possível salvar a preferência de biometria neste aparelho.');
+  }
   return true;
 }

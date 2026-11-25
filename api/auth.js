@@ -15,6 +15,7 @@ import {
   verifyWebAuthnRegistration,
   getWebAuthnLoginOptions,
   verifyWebAuthnLogin,
+  listWebAuthnCredentials,
   revokeWebAuthnCredential,
 } from '../features/auth/service/authService.js';
 import { appMetrics } from '../lib/observability.js';
@@ -119,6 +120,16 @@ export default async function handler(req, res) {
       return result.ok
         ? res.json(result)
         : res.status(400).json({ error: result.error || 'Não foi possível ativar a biometria.' });
+    }
+    if (resource === 'webauthn-credentials' && req.method === 'GET') {
+      if (user.must_change_password) {
+        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
+      }
+      if (rejectIfTrialExpired(res, user)) return;
+      const result = await listWebAuthnCredentials(user);
+      return result.credentials
+        ? res.json(result)
+        : res.status(400).json({ error: result.error || 'Biometria indisponível.' });
     }
     if (resource === 'webauthn-revoke' && req.method === 'POST') {
       if (rejectIfTrialExpired(res, user)) return;

@@ -225,12 +225,43 @@ function isCancelBiometricError(error){
  const message=String(error?.message||'');
  return /not allowed|abort|cancel|denied|notallowederror/i.test(message)||error?.name==='NotAllowedError';
 }
+function rememberBiometricUser(credentialId){
+ persistBiometricLogin(state.user.id,credentialId,state.user);
+}
+async function reuseExistingBiometricCredential(){
+ const pref=readBiometricPreference();
+ if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
+  rememberBiometricUser(pref.credentialId);
+  return pref.credentialId;
+ }
+ if(pref?.credentialId&&!pref.userId){
+  rememberBiometricUser(pref.credentialId);
+  return pref.credentialId;
+ }
+ try{
+  const listed=await request('/api/auth?resource=webauthn-credentials');
+  const existing=listed?.credentials?.[0]?.credentialId;
+  if(existing){
+   rememberBiometricUser(existing);
+   return existing;
+  }
+ }catch{
+  /* sem credencial no servidor — segue para cadastro único */
+ }
+ return '';
+}
 async function activateBiometricForCurrentUser({busyTitle='Ativando biometria',busyDetail='Confirme a digital ou o Face ID…'}={}){
  if(!state.user||!state.biometricSupported||state.user.must_change_password)return false;
+ // Já existe chave neste aparelho/conta: só marca como login principal (nunca cria de novo).
+ const reused=await reuseExistingBiometricCredential();
+ if(reused){
+  state.notice={text:'Biometria pronta neste aparelho.',type:'success'};
+  return true;
+ }
  const dismiss=showBusyStatus({title:busyTitle,detail:busyDetail});
  try{
   const result=await enrollBiometric(request);
-  persistBiometricLogin(state.user.id,result.credentialId);
+  rememberBiometricUser(result.credentialId);
   state.notice={text:'Biometria ativada neste aparelho.',type:'success'};
   return true;
  }catch(error){
@@ -289,11 +320,22 @@ async function logout(){
   await flushWaterBuffer();
   await saves.idle();
   const previousUserId=state.user?.id;
+  // Garante nome/e-mail do usuário prioritário antes de derrubar a sessão.
+  const pref=readBiometricPreference();
+  if(pref?.credentialId&&state.user&&String(pref.userId||previousUserId)===String(state.user.id)){
+   rememberBiometricUser(pref.credentialId);
+  }
   await request('/api/auth?resource=logout',{method:'POST',body:'{}'});
   if(previousUserId)clearDietCacheForUser(previousUserId);
   Object.assign(state,{...emptySessionState});
   forcePasswordLogin=false;
+  endLoading();
   dismiss();
+  state.biometricSupported=await supportsPlatformAuth();
+  if(isBiometricPreferred()&&state.biometricSupported){
+   biometricAuth();
+   return;
+  }
   await bootAuth();
  }catch(error){
   endLoading();
@@ -306,47 +348,54 @@ async function logout(){
 }
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
-function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:isBiometricPreferred(),onLogin:async({email,password,enableBiometric})=>{
+function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:false,onLogin:async({email,password,enableBiometric})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
   const pref=readBiometricPreference();
   state.pendingBiometricEnroll=false;
   state.pendingBiometricOffer=false;
   if(enableBiometric===true&&state.biometricSupported&&!state.user.must_change_password){
-   if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
-    persistBiometricLogin(state.user.id,pref.credentialId);
-   }else{
-    // Enrolar ainda no gesto do "Entrar" para o sistema liberar a biometria.
-    await activateBiometricForCurrentUser();
-   }
+   // Reutiliza chave existente; só cria na primeira vez neste aparelho.
+   await activateBiometricForCurrentUser();
   }else if(enableBiometric===false){
    if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
-    // Toggle desmarcado de propósito: desliga biometria neste aparelho.
     await revokeBiometric(request,pref.credentialId);
    }else if(state.biometricSupported&&!state.user.must_change_password&&!hasDeclinedBiometricOffer(state.user.id)){
     state.pendingBiometricOffer=true;
    }
+  }else if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
+   rememberBiometricUser(pref.credentialId);
   }
-  // enableBiometric === null → UI sem toggle; não mexe na preferência salva.
   forcePasswordLogin=false;
   await enter();
 }});}
 function biometricAuth(error=''){
  const pref=readBiometricPreference();
- renderBiometricUnlock(app,{error,autoStart:true,onUsePassword:()=>{forcePasswordLogin=true;auth();},onUnlock:async()=>{
-  const credentialId=readBiometricPreference()?.credentialId||pref?.credentialId;
-  if(!credentialId)throw Error('Ative a biometria pelo login com senha.');
-  try{
-   state.user=(await assertBiometric(request,credentialId)).user;
-   persistBiometricLogin(state.user.id,credentialId);
-  }catch(cause){
-   if(/não encontrada|nao encontrada|indisponível|indisponivel/i.test(String(cause?.message||''))){
-    clearBiometricPreference();
+ renderBiometricUnlock(app,{
+  error,
+  autoStart:true,
+  userName:pref?.userName||'',
+  userEmail:pref?.userEmail||'',
+  onChangeUser:()=>{
+   clearBiometricPreference();
+   forcePasswordLogin=true;
+   auth();
+  },
+  onUnlock:async()=>{
+   const credentialId=readBiometricPreference()?.credentialId||pref?.credentialId;
+   if(!credentialId)throw Error('Ative a biometria pelo login com senha.');
+   try{
+    state.user=(await assertBiometric(request,credentialId)).user;
+    rememberBiometricUser(credentialId);
+   }catch(cause){
+    if(/não encontrada|nao encontrada|indisponível|indisponivel/i.test(String(cause?.message||''))){
+     clearBiometricPreference();
+    }
+    throw cause;
    }
-   throw cause;
-  }
-  forcePasswordLogin=false;
-  await enter();
- }});
+   forcePasswordLogin=false;
+   await enter();
+  },
+ });
 }
 function invitePassword(tokens,error=''){
  renderInvitePassword(app,{error,onCancel:()=>{clearAuthRedirect();clearInviteTokens();auth();},onSubmit:async password=>{

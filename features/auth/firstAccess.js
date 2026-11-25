@@ -2,6 +2,12 @@ import { formFeedback, authErrorMessage } from './formFeedback.js';
 import { isStrongPassword, STRONG_PASSWORD_HINT, STRONG_PASSWORD_ERROR } from '../../lib/passwordPolicy.js';
 import { labelWithRequired, requiredLegend } from '../../lib/formRequired.js';
 
+const esc = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;');
+
 function bindPasswordForm(form, feedback, { submitLabel, onSubmit }) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -141,18 +147,33 @@ export function renderInvitePassword(container, { error = '', onSubmit, onCancel
   container.replaceChildren(shell);
 }
 
-/** Tela de entrada por biometria com fallback para senha. */
-export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePassword, autoStart = false } = {}) {
+/** Tela de acesso rápido (estilo app bancário): usuário lembrado + biometria. */
+export function renderBiometricUnlock(container, {
+  error = '',
+  userName = '',
+  userEmail = '',
+  onUnlock,
+  onChangeUser,
+  autoStart = false,
+} = {}) {
   const shell = document.createElement('main');
   shell.className = 'password-change-shell';
   const card = document.createElement('section');
   card.className = 'password-change-card biometric-unlock-card';
+  const displayName = String(userName || '').trim();
+  const firstName = displayName.split(/\s+/).filter(Boolean)[0] || 'de volta';
+  const initial = (displayName || userEmail || '?').trim().slice(0, 1).toUpperCase();
+  const emailLine = String(userEmail || '').trim();
   card.innerHTML = `
-    <h1>Entrar com biometria</h1>
-    <p>Use a digital ou o reconhecimento facial deste aparelho para acessar o Ritmo Saúde.</p>
+    <div class="biometric-user" aria-label="Usuário deste aparelho">
+      <span class="biometric-user__avatar" aria-hidden="true">${esc(initial)}</span>
+      <strong class="biometric-user__hello">Olá, ${esc(firstName)}</strong>
+      ${emailLine ? `<small class="biometric-user__email">${esc(emailLine)}</small>` : ''}
+    </div>
+    <p class="biometric-unlock-copy">Confirme com a digital ou o Face ID para entrar. Não vamos pedir para criar chave de novo.</p>
     <div class="auth-feedback" role="alert" hidden><span></span></div>
-    <button type="button" class="button button--primary" data-biometric-unlock>Usar digital ou Face ID</button>
-    <button type="button" class="button" data-biometric-password>Entrar com e-mail e senha</button>
+    <button type="button" class="button button--primary" data-biometric-unlock>Entrar com digital ou Face ID</button>
+    <button type="button" class="biometric-change-user" data-biometric-change-user>Mudar usuário</button>
   `;
   const alertBox = card.querySelector('.auth-feedback');
   const showError = (message) => {
@@ -179,11 +200,11 @@ export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePa
       unlockBtn.disabled = false;
       unlockBtn.classList.remove('is-busy');
       unlockBtn.removeAttribute('aria-busy');
-      unlockBtn.textContent = 'Usar digital ou Face ID';
+      unlockBtn.textContent = 'Entrar com digital ou Face ID';
     }
   };
   unlockBtn.addEventListener('click', runUnlock);
-  card.querySelector('[data-biometric-password]').addEventListener('click', () => onUsePassword?.());
+  card.querySelector('[data-biometric-change-user]').addEventListener('click', () => onChangeUser?.());
   shell.append(card);
   container.replaceChildren(shell);
   queueMicrotask(() => {

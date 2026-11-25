@@ -58,7 +58,7 @@ export function renderLogin(container, {
                 <input type="checkbox" name="enable_biometric" ${toggleChecked ? 'checked' : ''} />
                 <span>
                   <strong>Usar digital ou Face ID neste aparelho</strong>
-                  <small>Após entrar, o sistema pede a biometria cadastrada no dispositivo.</small>
+                  <small>Salva este usuário: nos próximos acessos você entra direto com biometria.</small>
                 </span>
               </label>` : ''}
               <button class="button button--primary login-submit" type="submit"><span>Entrar</span><span aria-hidden="true">↗</span></button>
