@@ -1,6 +1,5 @@
 import { formFeedback, authErrorMessage } from './formFeedback.js';
 import {
-  isBiometricPreferred,
   readBiometricPreference,
   supportsPlatformAuth,
 } from './biometric.js';
@@ -15,7 +14,8 @@ export function renderLogin(container, {
   preferBiometric = false,
 } = {}) {
   const pref = readBiometricPreference();
-  const toggleChecked = preferBiometric || isBiometricPreferred();
+  // No mobile, biometria vem marcada por padrão (desmarcar é a exceção).
+  const toggleChecked = biometricSupported && preferBiometric !== false;
   container.innerHTML = `
     <main class="login-layout">
       <section class="login-story" aria-label="Ritmo Saúde">

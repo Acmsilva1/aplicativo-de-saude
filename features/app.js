@@ -9,7 +9,9 @@ import {
   clearBiometricPreference,
   enrollBiometric,
   hasDeclinedBiometricOffer,
+  hasSavedDeviceUser,
   isBiometricPreferred,
+  isMobileDevice,
   markBiometricOfferDeclined,
   persistBiometricLogin,
   readBiometricPreference,
@@ -331,13 +333,14 @@ async function logout(){
   forcePasswordLogin=false;
   endLoading();
   dismiss();
-  state.biometricSupported=await supportsPlatformAuth();
-  if(isBiometricPreferred()&&state.biometricSupported){
-   biometricAuth();
+  // Com usuário padrão salvo, Sair volta direto para biometria (não para e-mail/senha).
+  if(hasSavedDeviceUser()){
+   state.biometricSupported=await supportsPlatformAuth()||isMobileDevice();
+   openDeviceUserGate();
    return;
   }
   await bootAuth();
- }catch(error){
+}catch(error){
   endLoading();
   dismiss();
   state.notice={text:error.message||'Não foi possível sair. Tente novamente.',type:'error'};
@@ -348,26 +351,26 @@ async function logout(){
 }
 function passwordChange(error=''){renderPasswordChange(app,{user:state.user,error,onLogout:logout,onSubmit:async password=>{state.user=(await request('/api/auth?resource=change-password',{method:'POST',body:JSON.stringify({password})})).user;await enter();}});}
 function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout});}
-function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:false,onLogin:async({email,password,enableBiometric})=>{
+function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:true,onLogin:async({email,password,enableBiometric})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
   const pref=readBiometricPreference();
   state.pendingBiometricEnroll=false;
   state.pendingBiometricOffer=false;
+  // Flag vem marcada por padrão: coleta (ou reutiliza) e salva usuário prioritário do aparelho.
   if(enableBiometric===true&&state.biometricSupported&&!state.user.must_change_password){
-   // Reutiliza chave existente; só cria na primeira vez neste aparelho.
    await activateBiometricForCurrentUser();
   }else if(enableBiometric===false){
    if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
     await revokeBiometric(request,pref.credentialId);
-   }else if(state.biometricSupported&&!state.user.must_change_password&&!hasDeclinedBiometricOffer(state.user.id)){
-    state.pendingBiometricOffer=true;
    }
-  }else if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
-   rememberBiometricUser(pref.credentialId);
+   // Sem flag: não oferece popup — usuário desmarcou de propósito.
   }
   forcePasswordLogin=false;
   await enter();
 }});}
+function openDeviceUserGate(error=''){
+ biometricAuth(error);
+}
 function biometricAuth(error=''){
  const pref=readBiometricPreference();
  renderBiometricUnlock(app,{
@@ -409,9 +412,11 @@ async function bootAuth(){
  const dismiss=showBusyStatus({title:'Carregando',detail:'Verificando sua sessão…'});
  try{
   state.biometricSupported=await supportsPlatformAuth();
-  if(!forcePasswordLogin&&isBiometricPreferred()&&state.biometricSupported){
+  // Abrir o app com usuário padrão salvo → pede biometria ANTES de formulário ou sessão.
+  if(!forcePasswordLogin&&hasSavedDeviceUser()&&(state.biometricSupported||isMobileDevice())){
+   state.biometricSupported=true;
    dismiss();
-   biometricAuth();
+   openDeviceUserGate();
    return;
   }
   try{

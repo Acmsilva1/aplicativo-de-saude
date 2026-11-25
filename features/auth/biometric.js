@@ -116,6 +116,11 @@ export function isBiometricPreferred() {
   return true;
 }
 
+/** Usuário padrão salvo no aparelho (login prioritário estilo app bancário). */
+export function hasSavedDeviceUser() {
+  return isBiometricPreferred();
+}
+
 export function hasDeclinedBiometricOffer(userId = '') {
   const pref = readBiometricPreference();
   if (!pref?.offerDeclined) return false;
