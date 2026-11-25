@@ -58,9 +58,20 @@ const api = vm.createContext({
   setAccountAccess: async () => null,
   appMetrics: () => ({}),
   saudeStore: { deleteUserData: async () => {} },
-  checkLoginRateLimit: () => ({ allowed: true }),
+  checkLoginRateLimitAsync: async () => ({ allowed: true }),
   recordLoginFailure() {},
   clearLoginAttempts() {},
+  exportPrivacyBundle: async () => ({ error: 'n/a' }),
+  verifyAccountPassword: async () => null,
+  getWebAuthnRegisterOptions: async () => ({}),
+  verifyWebAuthnRegistration: async () => ({}),
+  getWebAuthnLoginOptions: async () => ({}),
+  verifyWebAuthnLogin: async () => ({}),
+  listWebAuthnCredentials: async () => ({}),
+  revokeWebAuthnCredential: async () => ({}),
+  isTrialBlocked: () => false,
+  TRIAL_EXPIRED_CODE: 'trial_expired',
+  TRIAL_EXPIRED_MESSAGE: 'Período de teste encerrado.',
   STRONG_PASSWORD_ERROR: 'senha',
 });
 vm.runInContext(apiSource, api);
@@ -75,11 +86,11 @@ const call = async (user) => {
   return response;
 };
 assert.equal((await call(null)).statusCode, 401);
-assert.equal((await call({ role: 'student' })).statusCode, 403);
-assert.equal((await call({ role: 'professor' })).statusCode, 403);
-assert.equal((await call({ role: 'admin', must_change_password: true })).statusCode, 403);
+assert.equal((await call({ id: 's1', role: 'student' })).statusCode, 403);
+assert.equal((await call({ id: 'p1', role: 'professor' })).statusCode, 403);
+assert.equal((await call({ id: 'a1', role: 'admin', must_change_password: true })).statusCode, 403);
 assert.equal(linkCalls, 0);
-assert.equal((await call({ role: 'admin', must_change_password: false })).statusCode, 200);
+assert.equal((await call({ id: 'a1', role: 'admin', must_change_password: false })).statusCode, 200);
 assert.equal(linkCalls, 1);
 
 console.log('PASS invite setup token, strong password, admin-only password link resend');

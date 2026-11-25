@@ -50,7 +50,11 @@ const paused = mock.createDemoAccount({
   role: 'student',
   phone: '27988516302',
   professor_id: done.account.id,
+  sexo: 'male',
+  data_nascimento: '1990-01-15',
+  altura_cm: 175,
 });
+assert.ok(paused.account, paused.error || 'conta pausada deve ser criada');
 mock.setAccountAccess(paused.account.id, false);
 const pausedInvite = mock.completeDemoInvite(req, res, {
   setup_token: paused.setupToken,
