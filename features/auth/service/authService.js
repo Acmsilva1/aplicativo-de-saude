@@ -70,6 +70,12 @@ export async function deleteAccount(id) {
   return useMockData() ? mock.deleteDemoAccount(id) : real.deleteAccount(id);
 }
 
+export async function verifyAccountPassword(email, password) {
+  return useMockData()
+    ? mock.verifyDemoPassword(email, password)
+    : real.verifyPassword(email, password);
+}
+
 export {
   getWebAuthnRegisterOptions,
   verifyWebAuthnRegistration,

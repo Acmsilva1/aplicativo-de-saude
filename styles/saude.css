@@ -5408,3 +5408,21 @@ details[open] > summary .ui-chevron--fold {
   .av-hero-grid { grid-template-columns: 1fr 1fr; }
   .av-list-card__metrics b { font-size: .74rem; }
 }
+
+.app-footer-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  opacity: .9;
+}
+.login-privacy-link { margin: .35rem 0 0; }
+.privacy-page, .privacy-card { max-width: 40rem; }
+.privacy-block { margin: 1rem 0; }
+.privacy-block h2 { margin: 0 0 .4rem; font-size: 1rem; }
+.privacy-block ul { margin: 0; padding-left: 1.1rem; }
+.privacy-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }

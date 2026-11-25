@@ -46,6 +46,30 @@ export function clearDietCacheForUser(userId) {
   toRemove.forEach((k) => localStorage.removeItem(k));
 }
 
+/** Limpa todo cache local de dietas (todos os usuários neste aparelho). */
+export function clearAllDietCaches() {
+  if (typeof localStorage === 'undefined') return;
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(PREFIX)) toRemove.push(k);
+  }
+  toRemove.forEach((k) => localStorage.removeItem(k));
+}
+
+/** Remove chaves de app que possam conter dados de saúde no aparelho. */
+export function clearAllClientHealthCaches() {
+  clearAllDietCaches();
+  if (typeof localStorage === 'undefined') return;
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    if (k.startsWith('ritmo_') && !k.startsWith('ritmo_saude_biometric')) toRemove.push(k);
+  }
+  toRemove.forEach((k) => localStorage.removeItem(k));
+}
+
 /** Retorna payloads do cache se todos os summaries baterem em updated_at e tiverem refeições. */
 export function hydrateDietsFromCache(userId, summaries = []) {
   if (!userId || !summaries.length) return null;

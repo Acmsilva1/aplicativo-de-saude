@@ -3,6 +3,11 @@ import { saudeStore as store } from '../features/saude/data/saudeStore.js';
 import { validWaterAmount, validWaterGoal, validWaterRequestId } from '../features/saude/service/waterIntakeService.js';
 import { hasSupabaseConfig } from '../lib/env.js';
 import { isTrialBlocked, TRIAL_EXPIRED_CODE, TRIAL_EXPIRED_MESSAGE } from '../lib/trial.js';
+import {
+  PROFESSOR_SELF_RESOURCES,
+  assertProfessorOwnsStudent,
+  resolveHealthTargetUserId,
+} from '../lib/accessScope.js';
 
 export default async function handler(req, res) {
   try {
@@ -12,23 +17,29 @@ export default async function handler(req, res) {
 
     const user = await getUser(req, res);
     if (!user) return res.status(401).json({ error: 'Entre para acessar.' });
-    if (user.must_change_password) {
-      return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
-    }
     if (isTrialBlocked(user)) {
       return res.status(403).json({ error: TRIAL_EXPIRED_MESSAGE, code: TRIAL_EXPIRED_CODE });
     }
-    if (user.role === 'admin') {
-      return res.status(403).json({ error: 'A administração não consulta registros de saúde.' });
-    }
 
     const resource = String(req.query.resource || '');
-    const professor = user.role === 'professor';
+    const requestedId = String(req.body?.user_id || req.query.user_id || '');
+    const requireTarget = !(user.role === 'professor' && PROFESSOR_SELF_RESOURCES.has(resource));
+    const scope = resolveHealthTargetUserId(user, requestedId, { requireTarget });
+    if (!scope.ok) {
+      return res.status(scope.status).json({ error: scope.error, ...(scope.code ? { code: scope.code } : {}) });
+    }
+    const professor = scope.professor;
+    const id = scope.userId;
+
     if (!professor && !(await store.canUserAccess(user.id))) {
       return res.status(403).json({ error: 'Seu acesso está pausado pelo administrador.' });
     }
 
-    const id = professor ? String(req.body?.user_id || req.query.user_id || '') : user.id;
+    if (professor && requireTarget) {
+      if (!(await assertProfessorOwnsStudent(store, user.id, id))) {
+        return res.status(404).json({ error: 'Aluno não encontrado ou não vinculado ao seu perfil de professor.' });
+      }
+    }
 
     if (resource === 'professor-users' && professor && req.method === 'GET') {
       return res.json({ users: await store.getProfessorUsers(user.id) });
@@ -68,10 +79,6 @@ export default async function handler(req, res) {
           ? res.status(req.method === 'POST' ? 201 : 200).json({ template })
           : res.status(404).json({ error: 'Modelo não encontrado.' });
       }
-    }
-
-    if (professor && !(await store.hasStudent(id, user.id))) {
-      return res.status(404).json({ error: 'Aluno não encontrado ou não vinculado ao seu perfil de professor.' });
     }
 
     if (resource === 'dietas' && req.method === 'GET') {

@@ -125,13 +125,9 @@ export function hasSavedDeviceUser() {
   return isBiometricPreferred();
 }
 
-/** Credencial local vinculada a este e-mail (mesmo após "Mudar usuário"). */
-export function hasLocalBiometricForEmail(email = '') {
-  const pref = readBiometricPreference();
-  if (!pref?.credentialId || pref.preferred === false) return false;
-  const saved = normalizeLoginEmail(pref.userEmail);
-  if (!saved) return false;
-  return saved === normalizeLoginEmail(email);
+/** @deprecated Prefer hasLocalBiometricForUserId — e-mail não é mais persistido. */
+export function hasLocalBiometricForEmail() {
+  return false;
 }
 
 export function hasDeclinedBiometricOffer(userId = '') {
@@ -276,24 +272,32 @@ export async function revokeBiometric(request, credentialId) {
   return { ok: true };
 }
 
-export function persistBiometricLogin(userId, credentialId, profile = {}) {
+/**
+ * Guarda só identificadores opacos (sem e-mail/nome).
+ * A biometria em si nunca sai do autenticador do aparelho.
+ */
+export function persistBiometricLogin(userId, credentialId, _profile = {}) {
   const id = String(credentialId || '').trim();
+  const uid = String(userId || '').trim();
   if (!id) throw Error('Credencial biométrica inválida.');
-  const current = readBiometricPreference() || {};
-  const userName = String(profile.name || profile.nome || current.userName || '').trim();
-  const userEmail = String(profile.email || current.userEmail || '').trim().toLowerCase();
+  if (!uid) throw Error('Usuário biométrico inválido.');
   const ok = writeBiometricPreference({
-    ...current,
-    userId,
+    userId: uid,
     credentialId: id,
     preferred: true,
     offerDeclined: false,
-    userName,
-    userEmail,
     updatedAt: new Date().toISOString(),
   });
   if (!ok || !isBiometricPreferred()) {
     throw Error('Não foi possível salvar a preferência de biometria neste aparelho.');
   }
   return true;
+}
+
+/** Credencial local vinculada a este userId (sem PII). */
+export function hasLocalBiometricForUserId(userId = '') {
+  const pref = readBiometricPreference();
+  if (!pref?.credentialId || pref.preferred === false) return false;
+  if (!userId || !pref.userId) return false;
+  return String(pref.userId) === String(userId);
 }

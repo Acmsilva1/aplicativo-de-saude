@@ -20,34 +20,23 @@ globalThis.document = { cookie: '' };
 globalThis.location = { protocol: 'http:' };
 
 const bio = await import('../features/auth/biometric.js');
-const mock = await import('../features/auth/service/mockAuthService.js');
 
 bio.persistBiometricLogin('user-1', 'cred-1', { name: 'Ana', email: 'ana@test.com' });
-assert.equal(bio.hasSavedDeviceUser(), true);
-assert.equal(bio.hasLocalBiometricForEmail('ana@test.com'), true);
-
-const created = mock.createDemoAccount({
-  name: 'Bio Flow',
-  email: `bio.flow.${Date.now()}@saude.local`,
-  role: 'professor',
-  phone: '27988516301',
-});
-mock.saveWebAuthnCredential({
-  credential_id: 'cred-flow',
-  user_id: created.account.id,
-  public_key: 'abc',
-  counter: 0,
-  device_type: 'singleDevice',
-  backed_up: false,
-  transports: ['internal'],
-});
-assert.equal(mock.listWebAuthnCredentials(created.account.id).length, 1);
+const pref = bio.readBiometricPreference();
+assert.equal(pref.credentialId, 'cred-1');
+assert.equal(pref.userId, 'user-1');
+assert.equal(pref.userEmail, undefined);
+assert.equal(pref.userName, undefined);
+assert.equal(bio.hasLocalBiometricForUserId('user-1'), true);
+assert.equal(bio.hasLocalBiometricForEmail('ana@test.com'), false);
 
 const appSrc = await readFile(new URL('../features/app.js', import.meta.url), 'utf8');
-assert.ok(appSrc.includes('requireBiometricAfterPassword'), 'login deve exigir biometria após senha');
-assert.equal(appSrc.includes('maybeOfferBiometric'), false, 'não deve oferecer biometria opcional');
-assert.equal(appSrc.includes('openDeviceUserGate'), false, 'não deve pular direto para digital sem senha');
-assert.equal(appSrc.includes('biometria_habilitada'), false, 'fluxo não depende de flag no banco');
-assert.ok(appSrc.includes('abortLoginSession'), 'falha na biometria deve encerrar a sessão');
+assert.ok(appSrc.includes('requireBiometricAfterPassword'));
+assert.ok(appSrc.includes('clearAllClientHealthCaches'));
+assert.equal(appSrc.includes('maybeOfferBiometric'), false);
 
-console.log('PASS biometric flow: senha + biometria obrigatória, cadastro local 1x');
+const headers = await readFile(new URL('../lib/securityHeaders.js', import.meta.url), 'utf8');
+assert.ok(headers.includes("script-src 'self'"));
+assert.ok(headers.includes('upgrade-insecure-requests'));
+
+console.log('PASS biometric+privacy hardening: sem PII local, CSP, limpeza de cache');

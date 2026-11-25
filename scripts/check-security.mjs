@@ -3,8 +3,22 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { checkLoginRateLimit as check, clearLoginAttempts as clear } from '../lib/loginRateLimit.js';
+import {
+  PROFESSOR_SELF_RESOURCES,
+  assertProfessorOwnsStudent,
+  resolveHealthTargetUserId,
+} from '../lib/accessScope.js';
 const root = new URL('../', import.meta.url);
 const read = path => fs.readFileSync(new URL(path, root), 'utf8');
+
+// Escopo centralizado: aluno nunca usa user_id do cliente.
+assert.equal(resolveHealthTargetUserId({ id: 'student-a', role: 'student' }, 'student-b').userId, 'student-a');
+assert.equal(resolveHealthTargetUserId({ id: 'admin', role: 'admin' }, 'x').ok, false);
+assert.equal(resolveHealthTargetUserId({ id: 'professor-a', role: 'professor' }, '', { requireTarget: false }).ok, true);
+assert.equal(resolveHealthTargetUserId({ id: 'professor-a', role: 'professor' }, '').ok, false);
+assert.equal(PROFESSOR_SELF_RESOURCES.has('professor-portfolio'), true);
+console.log('PASS accessScope: student self, admin blocked, professor self resources');
+
 
 // Requests reserve a slot before awaiting authentication, ignoring untrusted XFF.
 const req = { ip: 'security-test-ip', headers: {}, socket: { remoteAddress: '127.0.0.1' } };
@@ -22,7 +36,9 @@ console.log('PASS rate limit: forged XFF, concurrent reservations, aggregate cap
 
 // Exercise the actual API handler with deterministic auth/store doubles. These
 // cases validate application authorization; they do not claim to test live RLS.
-const apiSource = read('api/saude.js').replace(/^import .*;\r?\n/gm, '').replace('export default async function handler', 'async function handler');
+const apiSource = read('api/saude.js')
+  .replace(/^import\s+[\s\S]*?;\r?\n/gm, '')
+  .replace('export default async function handler', 'async function handler');
 let actor = null, calls = [];
 const store = new Proxy({}, { get: (_target, key) => async (...args) => {
   calls.push([key, ...args]);
@@ -39,9 +55,13 @@ const api = vm.createContext({
   store,
   validWaterAmount: () => true,
   validWaterGoal: () => true,
+  validWaterRequestId: () => true,
   isTrialBlocked: () => false,
   TRIAL_EXPIRED_CODE: 'trial_expired',
   TRIAL_EXPIRED_MESSAGE: 'Período de teste encerrado.',
+  resolveHealthTargetUserId,
+  assertProfessorOwnsStudent,
+  PROFESSOR_SELF_RESOURCES,
 });
 vm.runInContext(apiSource, api, { filename: fileURLToPath(new URL('api/saude.js', root)) });
 const run = async (user, resource, method = 'GET', query = {}, body = {}) => {

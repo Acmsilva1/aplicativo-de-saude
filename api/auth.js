@@ -17,10 +17,12 @@ import {
   verifyWebAuthnLogin,
   listWebAuthnCredentials,
   revokeWebAuthnCredential,
+  verifyAccountPassword,
 } from '../features/auth/service/authService.js';
 import { appMetrics } from '../lib/observability.js';
 import { saudeStore } from '../features/saude/data/saudeStore.js';
-import { checkLoginRateLimit, recordLoginFailure, clearLoginAttempts } from '../lib/loginRateLimit.js';
+import { checkLoginRateLimitAsync, recordLoginFailure, clearLoginAttempts } from '../lib/loginRateLimit.js';
+import { exportPrivacyBundle } from '../features/privacy/privacyDataService.js';
 import { hasSupabaseConfig } from '../lib/env.js';
 import { STRONG_PASSWORD_ERROR } from '../lib/passwordPolicy.js';
 import { isTrialBlocked, TRIAL_EXPIRED_CODE, TRIAL_EXPIRED_MESSAGE } from '../lib/trial.js';
@@ -40,7 +42,7 @@ export default async function handler(req, res) {
     const resource = String(req.query.resource || '');
     if (resource === 'login' && req.method === 'POST') {
       const email = String(req.body?.email || '').trim().toLowerCase();
-      const limit = checkLoginRateLimit(req, email);
+      const limit = await checkLoginRateLimitAsync(req, email);
       if (!limit.allowed) {
         return res.status(429).json({
           error: `Muitas tentativas de login. Aguarde ${limit.retryAfterSec} segundos e tente novamente.`,
@@ -75,7 +77,7 @@ export default async function handler(req, res) {
     }
 
     if (resource === 'webauthn-login' && req.method === 'POST') {
-      const limit = checkLoginRateLimit(req, `webauthn:${String(req.body?.response?.id || req.body?.credentialId || '')}`);
+      const limit = await checkLoginRateLimitAsync(req, `webauthn:${String(req.body?.response?.id || req.body?.credentialId || '')}`);
       if (!limit.allowed) {
         return res.status(429).json({
           error: `Muitas tentativas. Aguarde ${limit.retryAfterSec} segundos e tente novamente.`,
@@ -137,6 +139,37 @@ export default async function handler(req, res) {
       return result.ok
         ? res.json(result)
         : res.status(400).json({ error: result.error || 'Não foi possível desativar a biometria.' });
+    }
+
+    if (resource === 'privacy-export' && req.method === 'GET') {
+      if (user.must_change_password) {
+        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
+      }
+      const bundle = await exportPrivacyBundle(user);
+      return bundle.error
+        ? res.status(400).json({ error: bundle.error })
+        : res.json(bundle);
+    }
+    if (resource === 'privacy-erase' && req.method === 'POST') {
+      if (user.must_change_password) {
+        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
+      }
+      if (user.role === 'admin') {
+        return res.status(400).json({ error: 'A conta de administração é protegida. Peça exclusão por outro canal.' });
+      }
+      const password = String(req.body?.password || '');
+      if (!password) return res.status(400).json({ error: 'Confirme com sua senha para excluir a conta.' });
+      const verified = await verifyAccountPassword(user.email, password);
+      if (!verified || String(verified.id) !== String(user.id)) {
+        return res.status(401).json({ error: 'Senha incorreta. Exclusão cancelada.' });
+      }
+      const deleted = await deleteAccount(user.id);
+      if (!deleted?.ok) {
+        return res.status(400).json({ error: deleted?.error || 'Não foi possível excluir a conta.' });
+      }
+      await saudeStore.deleteUserData(user.id);
+      await clearSession(req, res);
+      return res.json({ ok: true });
     }
 
     if (user.must_change_password) {

@@ -300,6 +300,7 @@ export const supabaseSaudeStore = {
   async deleteUserData(id) {
     const admin = db();
     await admin.from('health_webauthn_credentials').delete().eq('user_id', id);
+    await admin.from('health_body_assessments').delete().eq('user_id', id);
     await admin.from('health_diet_templates').delete().eq('professor_id', id);
     await admin.from('health_water_entries').delete().eq('user_id', id);
     await admin.from('health_water_goals').delete().eq('user_id', id);

@@ -194,6 +194,21 @@ export async function getUser(req, res) {
   return account;
 }
 
+/** Confere e-mail/senha sem gravar cookie (ex.: exclusão LGPD). */
+export async function verifyPassword(email, password) {
+  const e = String(email || '').trim().toLowerCase();
+  const p = String(password || '');
+  if (!e || !p) return null;
+  const { data, error } = await createUserClient().auth.signInWithPassword({ email: e, password: p });
+  if (error || !data?.session?.user) return null;
+  try {
+    await getSupabaseAdmin().auth.admin.signOut(data.session.access_token, 'local');
+  } catch {
+    /* ignore */
+  }
+  return loadAccount(data.session.user.id);
+}
+
 export async function createSession(req, res) {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
@@ -715,6 +730,7 @@ export async function deleteAccount(id) {
 
   const cleanupSteps = [
     ['health_webauthn_credentials', 'user_id'],
+    ['health_body_assessments', 'user_id'],
     ['health_diet_templates', 'professor_id'],
     ['health_water_entries', 'user_id'],
     ['health_water_goals', 'user_id'],

@@ -218,6 +218,12 @@ function findLoginAccount(email, password) {
   return accounts.find((x) => x.access && x.email === normalized && x.password_hash && verifyPassword(password, x.password_hash)) || null;
 }
 
+/** Confere e-mail/senha sem gravar cookie (ex.: exclusão LGPD). */
+export function verifyDemoPassword(email, password) {
+  const account = findLoginAccount(email, password);
+  return account ? publicAccount(account) : null;
+}
+
 export function createDemoSession(req, res) {
   const account = findLoginAccount(req.body?.email, req.body?.password || '');
   if (!account) return null;

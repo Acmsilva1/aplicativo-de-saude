@@ -5,6 +5,7 @@ import appInfo from '../../package.json';
 
 export function renderLogin(container, {
   onLogin,
+  onPrivacy,
   error = '',
 } = {}) {
   container.innerHTML = `
@@ -48,6 +49,7 @@ export function renderLogin(container, {
             </form>
           </div>
           <p class="login-privacy"><span aria-hidden="true">●</span> Acesso protegido à sua conta</p>
+          <p class="login-privacy-link"><button type="button" class="app-footer-link" data-login-privacy>Privacidade e LGPD</button></p>
           <p class="login-version">Versão ${appInfo.version}</p>
         </div>
       </section>
@@ -70,6 +72,7 @@ export function renderLogin(container, {
     passwordToggle.addEventListener('click', onTogglePassword);
     passwordToggle.addEventListener('mousedown', (event) => event.preventDefault());
   }
+  container.querySelector('[data-login-privacy]')?.addEventListener('click', () => onPrivacy?.());
   const feedback = formFeedback(loginForm);
   if (error) feedback.show(error);
   loginForm.addEventListener('submit', async (event) => {

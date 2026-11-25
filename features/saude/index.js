@@ -672,7 +672,30 @@ function renderAdminHome({ accounts = [], metrics = null } = {}) {
   </section>`;
 }
 
-export function renderSaudeContent(container, { state, onNavigate, onCreateDiet, onDeleteDiet, onEditDiet, onSetDietVisibility, onWaterGoal, onWaterAmount, onCreateAccount, onEditAccount, onDeleteAccount, onAccountAccess, onRegeneratePassword, onSaveTemplate, onDeleteTemplate, onUseTemplate, onSaveAssessment, onDeleteAssessment, onLogout }) {
+export function renderSaudeContent(container, {
+  state,
+  onNavigate,
+  onCreateDiet,
+  onDeleteDiet,
+  onEditDiet,
+  onSetDietVisibility,
+  onWaterGoal,
+  onWaterAmount,
+  onCreateAccount,
+  onEditAccount,
+  onDeleteAccount,
+  onAccountAccess,
+  onRegeneratePassword,
+  onSaveTemplate,
+  onDeleteTemplate,
+  onUseTemplate,
+  onSaveAssessment,
+  onDeleteAssessment,
+  onLogout,
+  onPrivacyExport,
+  onPrivacyErase,
+  privacyHtml = '',
+}) {
   const admin = state.user?.role === 'admin';
   const professor = state.user?.role === 'professor';
   const homeModule = 'home';
@@ -681,9 +704,12 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     : professor
     ? { label: 'Professor' }
     : { label: 'Aluno' };
-  const homeActive = state.module === homeModule;
+  const homeActive = state.module === homeModule || state.module === 'privacy';
   let content;
 
+  if (state.module === 'privacy') {
+    content = privacyHtml || '<section class="module-page"><p>Privacidade</p></section>';
+  } else {
   const adminProfessors = (state.accounts || []).filter((entry) => entry.role === 'professor');
   if (admin) {
     if (state.module === 'createAccount') content = renderAccountEditor(null, adminProfessors);
@@ -717,6 +743,7 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     else if (state.module === 'users') content = renderProfessorProfiles(state.profiles, state.selectedUserId);
     else content = renderProfessorHome({ profiles: state.profiles || [], templates: state.templates || [] });
   } else content = renderStudentHome(state);
+  }
 
   ensureWaterDropStyles();
   const loadingTitle = esc(state.loadingTitle || 'Abrindo sua área');
@@ -732,7 +759,7 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
   container.innerHTML = `<main class="app-shell"${state.loading ? ' aria-busy="true"' : ''}><header class="app-header"><div class="header-brand"><span class="header-heart">♥</span> RITMO <strong>SAÚDE</strong></div><div class="header-account"><span>${esc(state.user?.name || view.label)}</span><small>${view.label}</small><button type="button" data-action="logout"${state.loading ? ' disabled class="is-busy"' : ''}>${state.loading && /sair/i.test(state.loadingTitle || '') ? '<span class="button-busy-spinner" aria-hidden="true"></span><span>Saindo…</span>' : logoutLabel}</button></div></header>
     ${moduleNav}
     <div class="content-wrap" aria-busy="${state.loading ? 'true' : 'false'}">${state.pendingSaves ? '<div class="background-save-status" role="status" aria-live="polite">Salvando alterações…</div>' : ''}${state.loading ? `<div class="navigation-loading" role="status" aria-live="polite"><span class="navigation-loading__card"><span class="navigation-loading__spinner" aria-hidden="true"></span><span><strong>${loadingTitle}</strong><small>${loadingDetail}</small></span></span></div>` : ''}${renderNotice()}${content}</div>
-    <footer class="app-footer">${trialFooter}<span>Ritmo Saúde</span></footer></main>`;
+    <footer class="app-footer">${trialFooter}<button type="button" class="app-footer-link" data-action="privacy">Privacidade</button><span>Ritmo Saúde</span></footer></main>`;
 
   container.querySelectorAll('button[data-id^="pending-"]').forEach(button => {
     button.disabled = true;
@@ -850,6 +877,9 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     onNavigate?.('createDiet', state.selectedUserId);
   }));
   container.querySelector('[data-action="logout"]')?.addEventListener('click', onLogout);
+  container.querySelector('[data-action="privacy"]')?.addEventListener('click', () => onNavigate?.('privacy'));
+  container.querySelector('[data-privacy-export]')?.addEventListener('click', () => onPrivacyExport?.());
+  container.querySelector('[data-privacy-erase]')?.addEventListener('click', () => onPrivacyErase?.());
   container.querySelector('[data-account-form]')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-choice-set]');
     if (!button || button.disabled) return;
