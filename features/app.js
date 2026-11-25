@@ -412,14 +412,8 @@ async function bootAuth(){
  const dismiss=showBusyStatus({title:'Carregando',detail:'Verificando sua sessão…'});
  try{
   state.biometricSupported=await supportsPlatformAuth();
-  // Abrir o app com usuário padrão salvo → pede biometria ANTES de formulário ou sessão.
-  if(!forcePasswordLogin&&hasSavedDeviceUser()&&(state.biometricSupported||isMobileDevice())){
-   state.biometricSupported=true;
-   dismiss();
-   openDeviceUserGate();
-   return;
-  }
   try{
+   // Sessão ainda ativa → entra direto, sem pedir biometria de novo.
    state.user=(await request('/api/auth?resource=session')).user;
    if(state.user.trial_expired){
     dismiss();
@@ -438,11 +432,22 @@ async function bootAuth(){
   }catch{
    endLoading();
    dismiss();
+   // Sem sessão: se há usuário padrão no aparelho, pede biometria; senão, e-mail/senha.
+   if(!forcePasswordLogin&&hasSavedDeviceUser()&&(state.biometricSupported||isMobileDevice())){
+    state.biometricSupported=true;
+    openDeviceUserGate();
+    return;
+   }
    auth();
   }
  }catch{
   endLoading();
   dismiss();
+  if(!forcePasswordLogin&&hasSavedDeviceUser()&&(state.biometricSupported||isMobileDevice())){
+   state.biometricSupported=true;
+   openDeviceUserGate();
+   return;
+  }
   auth();
  }
 }
