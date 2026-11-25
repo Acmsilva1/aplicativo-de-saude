@@ -8,12 +8,15 @@ import {
   assertBiometric,
   clearBiometricPreference,
   enrollBiometric,
+  hasDeclinedBiometricOffer,
   isBiometricPreferred,
+  markBiometricOfferDeclined,
+  persistBiometricLogin,
   readBiometricPreference,
   revokeBiometric,
   supportsPlatformAuth,
-  writeBiometricPreference,
 } from './auth/biometric.js';
+import { confirmAction } from './saude/service/uiConfirmation.js';
 import {
   clearDietCacheForUser,
   dietsHaveStructure,
@@ -21,14 +24,14 @@ import {
   writeDietsCache,
 } from './saude/data/dietCache.js';
 const app=document.querySelector('#app');
-const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false,biometricSupported:false};
+const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false,pendingBiometricOffer:false,biometricSupported:false};
 function beginLoading(title='Aguarde',detail='Carregando…'){
  state.loading=true;state.loadingTitle=title;state.loadingDetail=detail;
 }
 function endLoading(){
  state.loading=false;state.loadingTitle='';state.loadingDetail='';
 }
-const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false};
+const emptySessionState={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',pendingBiometricEnroll:false,pendingBiometricOffer:false};
 let forcePasswordLogin=false;
 const INVITE_TOKENS_KEY='ritmo_invite_tokens';
 function storeInviteTokens(tokens){
@@ -218,22 +221,42 @@ function saveGoal(id,goal,mode){
   success:()=>{state.profilesLoaded=false;saved('Meta salva.');},failure:failed});
 }
 const initialModule=()=>'home';
-async function maybeEnrollBiometric(){
- if(!state.pendingBiometricEnroll||!state.user||state.user.must_change_password)return;
- if(!state.biometricSupported){state.pendingBiometricEnroll=false;return;}
- state.pendingBiometricEnroll=false;
+function isCancelBiometricError(error){
+ const message=String(error?.message||'');
+ return /not allowed|abort|cancel|denied|notallowederror/i.test(message)||error?.name==='NotAllowedError';
+}
+async function activateBiometricForCurrentUser({busyTitle='Ativando biometria',busyDetail='Confirme a digital ou o Face ID…'}={}){
+ if(!state.user||!state.biometricSupported||state.user.must_change_password)return false;
+ const dismiss=showBusyStatus({title:busyTitle,detail:busyDetail});
  try{
   const result=await enrollBiometric(request);
-  writeBiometricPreference({userId:state.user.id,credentialId:result.credentialId,preferred:true});
+  persistBiometricLogin(state.user.id,result.credentialId);
   state.notice={text:'Biometria ativada neste aparelho.',type:'success'};
+  return true;
  }catch(error){
-  const message=String(error?.message||'');
-  if(/not allowed|abort|cancel|denied|notallowederror/i.test(message)||error?.name==='NotAllowedError'){
+  if(isCancelBiometricError(error)){
    state.notice={text:'Biometria não ativada. Você pode ligar no próximo login.',type:'error'};
-   return;
+   return false;
   }
-  state.notice={text:message||'Não foi possível ativar a biometria.',type:'error'};
+  state.notice={text:error?.message||'Não foi possível ativar a biometria.',type:'error'};
+  return false;
+ }finally{
+  dismiss();
  }
+}
+async function maybeOfferBiometric(){
+ if(!state.pendingBiometricOffer||!state.user||state.user.must_change_password)return;
+ state.pendingBiometricOffer=false;
+ if(!state.biometricSupported||isBiometricPreferred()||hasDeclinedBiometricOffer(state.user.id))return;
+ const accepted=await confirmAction(
+  'Nos próximos acessos você entra só com a digital ou o Face ID deste aparelho.',
+  {title:'Usar digital ou Face ID?',confirmLabel:'Ativar biometria',tone:'primary'},
+ );
+ if(!accepted){
+  markBiometricOfferDeclined(state.user.id);
+  return;
+ }
+ await activateBiometricForCurrentUser();
 }
 async function enter(){
  const dismiss=showWelcome(state.user);
@@ -245,7 +268,7 @@ async function enter(){
   if(!state.user.must_change_password){
    beginLoading('Abrindo sua área','Carregando os dados…');
    render();
-   await maybeEnrollBiometric();
+   await maybeOfferBiometric();
    await load(initialModule());
    endLoading();
   }
@@ -286,29 +309,35 @@ function trialExpired(){renderTrialExpired(app,{user:state.user,onLogout:logout}
 function auth(error=''){renderLogin(app,{error,biometricSupported:state.biometricSupported,preferBiometric:isBiometricPreferred(),onLogin:async({email,password,enableBiometric})=>{
   state.user=(await request('/api/auth?resource=login',{method:'POST',body:JSON.stringify({email,password})})).user;
   const pref=readBiometricPreference();
-  if(enableBiometric&&state.biometricSupported){
-   if(pref?.credentialId&&pref.userId===state.user.id){
-    state.pendingBiometricEnroll=false;
-    writeBiometricPreference({userId:state.user.id,credentialId:pref.credentialId,preferred:true});
+  state.pendingBiometricEnroll=false;
+  state.pendingBiometricOffer=false;
+  if(enableBiometric===true&&state.biometricSupported&&!state.user.must_change_password){
+   if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
+    persistBiometricLogin(state.user.id,pref.credentialId);
    }else{
-    state.pendingBiometricEnroll=true;
+    // Enrolar ainda no gesto do "Entrar" para o sistema liberar a biometria.
+    await activateBiometricForCurrentUser();
    }
-  }else if(pref?.credentialId&&pref.userId===state.user.id){
-   state.pendingBiometricEnroll=false;
-   await revokeBiometric(request,pref.credentialId);
-  }else{
-   state.pendingBiometricEnroll=false;
-   clearBiometricPreference();
+  }else if(enableBiometric===false){
+   if(pref?.credentialId&&String(pref.userId)===String(state.user.id)){
+    // Toggle desmarcado de propósito: desliga biometria neste aparelho.
+    await revokeBiometric(request,pref.credentialId);
+   }else if(state.biometricSupported&&!state.user.must_change_password&&!hasDeclinedBiometricOffer(state.user.id)){
+    state.pendingBiometricOffer=true;
+   }
   }
+  // enableBiometric === null → UI sem toggle; não mexe na preferência salva.
   forcePasswordLogin=false;
   await enter();
 }});}
 function biometricAuth(error=''){
  const pref=readBiometricPreference();
- renderBiometricUnlock(app,{error,onUsePassword:()=>{forcePasswordLogin=true;auth();},onUnlock:async()=>{
-  if(!pref?.credentialId)throw Error('Ative a biometria pelo login com senha.');
+ renderBiometricUnlock(app,{error,autoStart:true,onUsePassword:()=>{forcePasswordLogin=true;auth();},onUnlock:async()=>{
+  const credentialId=readBiometricPreference()?.credentialId||pref?.credentialId;
+  if(!credentialId)throw Error('Ative a biometria pelo login com senha.');
   try{
-   state.user=(await assertBiometric(request,pref.credentialId)).user;
+   state.user=(await assertBiometric(request,credentialId)).user;
+   persistBiometricLogin(state.user.id,credentialId);
   }catch(cause){
    if(/não encontrada|nao encontrada|indisponível|indisponivel/i.test(String(cause?.message||''))){
     clearBiometricPreference();

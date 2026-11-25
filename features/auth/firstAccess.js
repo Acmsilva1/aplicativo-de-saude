@@ -142,7 +142,7 @@ export function renderInvitePassword(container, { error = '', onSubmit, onCancel
 }
 
 /** Tela de entrada por biometria com fallback para senha. */
-export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePassword }) {
+export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePassword, autoStart = false } = {}) {
   const shell = document.createElement('main');
   shell.className = 'password-change-shell';
   const card = document.createElement('section');
@@ -161,7 +161,10 @@ export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePa
   };
   if (error) showError(error);
   const unlockBtn = card.querySelector('[data-biometric-unlock]');
-  unlockBtn.addEventListener('click', async () => {
+  let unlocking = false;
+  const runUnlock = async () => {
+    if (unlocking) return;
+    unlocking = true;
     showError('');
     unlockBtn.disabled = true;
     unlockBtn.classList.add('is-busy');
@@ -172,16 +175,21 @@ export function renderBiometricUnlock(container, { error = '', onUnlock, onUsePa
     } catch (cause) {
       showError(authErrorMessage(cause));
     } finally {
+      unlocking = false;
       unlockBtn.disabled = false;
       unlockBtn.classList.remove('is-busy');
       unlockBtn.removeAttribute('aria-busy');
       unlockBtn.textContent = 'Usar digital ou Face ID';
     }
-  });
+  };
+  unlockBtn.addEventListener('click', runUnlock);
   card.querySelector('[data-biometric-password]').addEventListener('click', () => onUsePassword?.());
   shell.append(card);
   container.replaceChildren(shell);
-  queueMicrotask(() => unlockBtn.focus({ preventScroll: true }));
+  queueMicrotask(() => {
+    unlockBtn.focus({ preventScroll: true });
+    if (autoStart) runUnlock();
+  });
 }
 
 /** Overlay leve de ocupado (logout, boot, ações longas fora do app-shell). */

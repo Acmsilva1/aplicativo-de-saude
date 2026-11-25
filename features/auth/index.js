@@ -94,7 +94,9 @@ export function renderLogin(container, {
     feedback.clear();
     const email = loginForm.elements.namedItem('email');
     const password = loginForm.elements.namedItem('password');
-    const enableBiometric = Boolean(loginForm.elements.namedItem('enable_biometric')?.checked);
+    const biometricField = loginForm.elements.namedItem('enable_biometric');
+    // true/false quando o toggle existe; null quando biometria não está disponível na UI.
+    const enableBiometric = biometricField ? Boolean(biometricField.checked) : null;
     if (!email.value.trim() || email.validity.typeMismatch) { feedback.show('Informe um e-mail válido.', email); return; }
     if (!password.value) { feedback.show('Informe sua senha.', password); return; }
     const button = loginForm.querySelector('.login-submit');

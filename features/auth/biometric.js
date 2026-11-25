@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'ritmo_saude_biometric';
+const STORAGE_BACKUP_KEY = 'ritmo_saude_biometric_backup';
 
 function bufferToBase64Url(value) {
   const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value || []);
@@ -16,10 +17,9 @@ function base64UrlToBuffer(value) {
   return bytes.buffer;
 }
 
-export function readBiometricPreference() {
+function parsePreference(raw) {
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
     return parsed;
@@ -28,21 +28,74 @@ export function readBiometricPreference() {
   }
 }
 
+function readFromStore(store) {
+  try {
+    return parsePreference(store?.getItem?.(STORAGE_KEY) || store?.getItem?.(STORAGE_BACKUP_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function readBiometricPreference() {
+  return readFromStore(window.localStorage) || readFromStore(window.sessionStorage);
+}
+
 export function writeBiometricPreference(value) {
   if (!value) {
-    localStorage.removeItem(STORAGE_KEY);
-    return;
+    clearBiometricPreference();
+    return true;
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  const payload = JSON.stringify(value);
+  let saved = false;
+  try {
+    localStorage.setItem(STORAGE_KEY, payload);
+    localStorage.setItem(STORAGE_BACKUP_KEY, payload);
+    saved = true;
+  } catch {
+    /* private mode / quota */
+  }
+  try {
+    sessionStorage.setItem(STORAGE_KEY, payload);
+    sessionStorage.setItem(STORAGE_BACKUP_KEY, payload);
+    saved = true;
+  } catch {
+    /* ignore */
+  }
+  const verify = readBiometricPreference();
+  if (!saved || !verify) return false;
+  if (value.credentialId && verify.credentialId !== value.credentialId) return false;
+  if (value.preferred && !verify.preferred) return false;
+  return true;
 }
 
 export function clearBiometricPreference() {
-  localStorage.removeItem(STORAGE_KEY);
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(STORAGE_BACKUP_KEY); } catch { /* ignore */ }
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  try { sessionStorage.removeItem(STORAGE_BACKUP_KEY); } catch { /* ignore */ }
 }
 
 export function isBiometricPreferred() {
   const pref = readBiometricPreference();
   return Boolean(pref?.preferred && pref?.credentialId);
+}
+
+export function hasDeclinedBiometricOffer(userId = '') {
+  const pref = readBiometricPreference();
+  if (!pref?.offerDeclined) return false;
+  if (userId && pref.userId && String(pref.userId) !== String(userId)) return false;
+  return true;
+}
+
+export function markBiometricOfferDeclined(userId) {
+  const current = readBiometricPreference() || {};
+  return writeBiometricPreference({
+    ...current,
+    userId: userId || current.userId || null,
+    preferred: false,
+    offerDeclined: true,
+    offerDeclinedAt: new Date().toISOString(),
+  });
 }
 
 /** Biometria só no mobile (telefone/tablet). Desktop usa e-mail e senha. */
@@ -132,7 +185,9 @@ export async function enrollBiometric(request) {
     method: 'POST',
     body: JSON.stringify({ response: publicKeyCredentialToJSON(credential) }),
   });
-  return result;
+  const credentialId = String(result?.credentialId || credential.id || '').trim();
+  if (!credentialId) throw Error('Biometria ativada no servidor, mas sem identificador local.');
+  return { ...result, credentialId };
 }
 
 export async function assertBiometric(request, credentialId) {
@@ -165,4 +220,16 @@ export async function revokeBiometric(request, credentialId) {
   }
   clearBiometricPreference();
   return { ok: true };
+}
+
+export function persistBiometricLogin(userId, credentialId) {
+  const ok = writeBiometricPreference({
+    userId,
+    credentialId,
+    preferred: true,
+    offerDeclined: false,
+    updatedAt: new Date().toISOString(),
+  });
+  if (!ok) throw Error('Não foi possível salvar a preferência de biometria neste aparelho.');
+  return true;
 }
