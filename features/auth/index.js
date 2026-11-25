@@ -49,7 +49,7 @@ export function renderLogin(container, {
             </form>
           </div>
           <p class="login-privacy"><span aria-hidden="true">●</span> Acesso protegido à sua conta</p>
-          <p class="login-privacy-link"><button type="button" class="app-footer-link" data-login-privacy>Privacidade e LGPD</button></p>
+          <p class="login-privacy-link"><button type="button" class="app-footer-link" data-login-privacy>Privacidade</button></p>
           <p class="login-version">Versão ${appInfo.version}</p>
         </div>
       </section>

@@ -29,7 +29,7 @@ export function openPrivacyModal({
   const rights = PRIVACY_RIGHTS.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
   const actions = [];
   if (canExport) {
-    actions.push('<button type="button" class="saude-btn saude-btn--primary" data-privacy-export>Exportar meus dados</button>');
+    actions.push('<button type="button" class="saude-btn saude-btn--primary" data-privacy-export>Baixar PDF dos meus dados</button>');
   }
   if (canErase) {
     actions.push('<button type="button" class="saude-btn" data-privacy-erase>Excluir minha conta</button>');
@@ -44,13 +44,19 @@ export function openPrivacyModal({
       <button type="button" class="privacy-modal__close" data-privacy-close aria-label="Fechar">×</button>
     </header>
     <div class="privacy-modal__body">
-      <p class="privacy-modal__lead">${escapeHtml(PRIVACY_SUMMARY)}</p>
-      <p class="privacy-modal__label">Seus direitos</p>
+      <p class="privacy-modal__lead">Seus dados de saúde são usados para o acompanhamento nutricional do piloto. Consulte os detalhes ou escolha uma opção abaixo.</p>
+      <details class="privacy-modal__details">
+        <summary>Tratamento, direitos e retenção</summary>
+        <div class="privacy-modal__details-content">
+          <p>${escapeHtml(PRIVACY_SUMMARY)}</p>
+      <p class="privacy-modal__label">O que você pode fazer</p>
       <ul class="privacy-modal__list">${rights}</ul>
-      <p class="privacy-modal__label">Retenção</p>
+      <p class="privacy-modal__label">Por quanto tempo guardamos</p>
       <p>${escapeHtml(PRIVACY_RETENTION)}</p>
-      <p class="privacy-modal__label">Contato</p>
-      <p>${escapeHtml(PRIVACY_CONTACT)}</p>
+      <p class="privacy-modal__label">Ajuda</p>
+          <p>${escapeHtml(PRIVACY_CONTACT)}</p>
+        </div>
+      </details>
     </div>
     ${actions.length ? `<div class="privacy-modal__actions">${actions.join('')}</div>` : ''}
   `;

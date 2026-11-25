@@ -5465,8 +5465,8 @@ details[open] > summary .ui-chevron--fold {
 .privacy-modal__close {
   appearance: none;
   border: 0;
-  background: transparent;
-  color: #5b6b80;
+  background: #e8edf3;
+  color: #344256;
   font-size: 1.35rem;
   line-height: 1;
   width: 1.75rem;
@@ -5489,7 +5489,7 @@ details[open] > summary .ui-chevron--fold {
   line-height: 1.45;
   color: #4b5a6c;
 }
-.privacy-modal__lead { margin: 0 0 .55rem; }
+.privacy-modal__lead { margin: 0 0 .65rem; font-size: .73rem; line-height: 1.45; }
 .privacy-modal__label {
   margin: .55rem 0 .2rem;
   font-size: .68rem;

@@ -1,23 +1,22 @@
-# Privacidade e LGPD — Ritmo Saúde
+# Privacidade — Ritmo Saúde
 
-Documento operacional do piloto. O texto resumido também aparece no app (login e rodapé → Privacidade).
+Texto simples também aparece no app (login e rodapé → Privacidade).
 
-## Dados tratados
+## O que guardamos
 
-- Cadastro: nome, e-mail, telefone, perfil (aluno/professor), vínculo professor–aluno
-- Saúde: dietas, hidratação, avaliações corporais (medidas, composição)
-- Segurança: sessão, credencial WebAuthn (chave pública), limites de tentativa de login
+- Cadastro: nome, e-mail, telefone, tipo de conta (aluno/professor)
+- Saúde: dietas, água e avaliações do corpo
+- Segurança: sessão de login e dados técnicos da digital do aparelho (sem a imagem da digital)
 
-A biometria (digital/Face ID) permanece no aparelho; o servidor não armazena a imagem biométrica.
+## O que você pode fazer no app
 
-## Direitos do titular
+- Baixar um PDF com seus dados
+- Apagar sua conta (com confirmação de senha). Conta de administrador é protegida.
 
-No app autenticado: **exportar meus dados** e **excluir minha conta** (com confirmação de senha). Conta de administração é protegida.
+## Por quanto tempo
 
-## Retenção
+Enquanto a conta estiver ativa. Depois de apagar, os dados saem do sistema; pode restar cópia de segurança por até 30 dias.
 
-Enquanto a conta estiver ativa. Após exclusão: eliminação dos dados de saúde/cadastro; backups de contingência do piloto por até 30 dias, salvo obrigação legal.
+## Ajuda
 
-## Contato
-
-Administrador do piloto / canal definido na operação do ambiente.
+Administrador do piloto.

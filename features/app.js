@@ -20,6 +20,7 @@ import {
   writeDietsCache,
 } from './saude/data/dietCache.js';
 import { openPrivacyModal } from './privacy/index.js';
+import { openPrivacyExportPdf } from './privacy/privacyExportPdf.js';
 import { confirmAction, showToast } from './saude/service/uiConfirmation.js';
 const app=document.querySelector('#app');
 const state={user:null,module:'users',loading:false,loadingTitle:'',loadingDetail:'',moduleError:'',accounts:[],accountsLoaded:false,metrics:null,profiles:[],profilesLoaded:false,diets:[],diet:null,water:null,monitor:null,selectedUserId:'',templates:[],templatesLoaded:false,template:null,templateDraft:null,dietDraft:null,dietSourceSelected:false,foodItemContext:null,foods:[],foodsLoaded:false,assessments:[],assessment:null,assessmentDraft:null,compareFromId:'',compareToId:'',notice:'',biometricSupported:false};
@@ -359,14 +360,9 @@ function openPrivacy(){
   onExport:async()=>{
    try{
     const bundle=await request('/api/auth?resource=privacy-export');
-    const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=`ritmo-saude-meus-dados-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Exportação baixada.');
+    const opened=openPrivacyExportPdf(bundle);
+    if(!opened)throw Error('Não foi possível gerar o PDF.');
+    showToast('Na próxima tela, escolha Salvar como PDF.');
    }catch(e){
     showToast(e.message||'Falha na exportação.',{type:'error'});
    }

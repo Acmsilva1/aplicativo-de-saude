@@ -5,7 +5,7 @@ export async function exportPrivacyBundle(user) {
   if (!user?.id) return { error: 'Sessão encerrada.' };
   const base = {
     exported_at: new Date().toISOString(),
-    retention_note: 'Exportação gerada a pedido do titular. Avaliações corporais e dieta são dados sensíveis de saúde.',
+    retention_note: 'Documento gerado a seu pedido. Contém dados pessoais e de saúde — guarde com cuidado e compartilhe só se necessário.',
     profile: {
       id: user.id,
       name: user.name || '',
