@@ -403,7 +403,9 @@ export async function createAccount(payload = {}, req = null) {
     return { error: 'Informe nome, e-mail único, telefone e perfil Professor ou Aluno.' };
   }
   if (phoneResult.error) return { error: phoneResult.error };
-  const body = normalizeProfileBodyFields(payload, { required: role === 'student' });
+  const body = role === 'student'
+    ? normalizeProfileBodyFields(payload, { required: true })
+    : { sexo: null, data_nascimento: null, altura_cm: null };
   if (body.error) return { error: body.error };
   const linkId = await resolveProfessorId(role, payload.professor_id);
   if (role === 'student' && linkId === undefined) {
@@ -579,22 +581,20 @@ export async function updateAccount(id, {
   }
 
   let phoneValue = current.phone || '';
-  let body = {
-    sexo: current.sexo ?? null,
-    data_nascimento: current.data_nascimento ?? null,
-    altura_cm: current.altura_cm ?? null,
-  };
+  let body = null;
   if (nextRole !== 'admin') {
     const phoneResult = normalizeBrazilPhone(phone || telefone || current.phone);
     if (phoneResult.error) return { error: phoneResult.error };
     phoneValue = phoneResult.phone;
+  }
+  if (nextRole === 'student') {
     body = normalizeProfileBodyFields(
       {
         sexo: sexo ?? current.sexo,
         data_nascimento: data_nascimento ?? current.data_nascimento,
         altura_cm: altura_cm ?? current.altura_cm,
       },
-      { required: nextRole === 'student' },
+      { required: true },
     );
     if (body.error) return { error: body.error };
   }
@@ -614,11 +614,15 @@ export async function updateAccount(id, {
   if (clash) return { error: 'Confira nome e e-mail único.' };
 
   const profileUpdate = { nome: n, email: e };
-  if (nextRole !== 'admin') {
-    profileUpdate.telefone = phoneValue;
+  if (nextRole !== 'admin') profileUpdate.telefone = phoneValue;
+  if (nextRole === 'student' && body) {
     profileUpdate.sexo = body.sexo;
     profileUpdate.data_nascimento = body.data_nascimento;
     profileUpdate.altura_cm = body.altura_cm;
+  } else if (nextRole === 'professor') {
+    profileUpdate.sexo = null;
+    profileUpdate.data_nascimento = null;
+    profileUpdate.altura_cm = null;
   }
 
   const { error: profileErr } = await admin

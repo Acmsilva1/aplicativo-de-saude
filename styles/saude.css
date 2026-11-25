@@ -1993,12 +1993,12 @@ body {
   padding: 14px 18px 54px;
 }
 .navigation-loading {
-  position: absolute;
-  z-index: 10;
+  position: fixed;
+  z-index: 200;
   inset: 0;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   padding: 24px 16px;
   background: #07143435;
   backdrop-filter: blur(2px);

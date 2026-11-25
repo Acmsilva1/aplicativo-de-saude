@@ -611,23 +611,23 @@ function renderAccountEditor(account = null, professors = []) {
   const phoneField = role === 'admin'
     ? ''
     : `<label><span>${labelWithRequired('📱 Telefone', true)}</span><input name="phone" type="tel" maxlength="20" required autocomplete="tel" inputmode="numeric" placeholder="27988516301" value="${esc(phoneValue)}"></label>`;
-  const bodyRequired = role === 'student';
+  const showBodyFields = role === 'student';
   const sexValue = account?.sexo === 'female' || account?.sexo === 'male' ? account.sexo : '';
   const bodyFields = role === 'admin'
     ? ''
-    : `<div data-body-profile-fields data-body-required="${bodyRequired ? 'true' : 'false'}">
+    : `<div data-body-profile-fields${showBodyFields ? '' : ' hidden'}>
       ${renderChoiceOptions({
         name: 'sexo',
         label: '⚥ Sexo',
         value: sexValue,
-        required: bodyRequired,
+        required: showBodyFields,
         options: [
           { value: 'male', label: 'Masculino', emoji: '👨' },
           { value: 'female', label: 'Feminino', emoji: '👩' },
         ],
       })}
-      <label><span>${labelWithRequired('🎂 Data de nascimento', bodyRequired)}</span><input name="data_nascimento" type="date" ${bodyRequired ? 'required' : ''} value="${esc(account?.data_nascimento || '')}"></label>
-      <label><span>${labelWithRequired('📏 Altura (cm)', bodyRequired)}</span><input name="altura_cm" type="number" min="100" max="250" step="0.1" inputmode="decimal" ${bodyRequired ? 'required' : ''} placeholder="Ex.: 178" value="${esc(account?.altura_cm ?? '')}"></label>
+      <label><span>${labelWithRequired('🎂 Data de nascimento', showBodyFields)}</span><input name="data_nascimento" type="date" ${showBodyFields ? 'required' : ''} value="${esc(account?.data_nascimento || '')}"></label>
+      <label><span>${labelWithRequired('📏 Altura (cm)', showBodyFields)}</span><input name="altura_cm" type="number" min="100" max="250" step="0.1" inputmode="decimal" ${showBodyFields ? 'required' : ''} placeholder="Ex.: 178" value="${esc(account?.altura_cm ?? '')}"></label>
       <p class="saude-empty-row">Sexo, nascimento e altura entram nas avaliações corporais (IMC e % gordura).</p>
     </div>`;
   return `<section class="module-page"><button class="back-link" type="button" data-module="accounts">‹ Voltar para contas</button><header class="module-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>${editing ? '✏️ Editar conta' : '➕ Nova conta'}</h1><p>${editing ? 'Atualize os dados do acesso.' : 'Cadastre um acesso de professor ou aluno.'}</p></div></header><form class="saude-student-form fin-list" data-account-form data-editing="${editing}" data-id="${esc(account?.id ?? account?.user_id ?? '')}">${requiredLegend()}<label><span>${labelWithRequired('👤 Nome', true)}</span><input name="name" maxlength="80" required autocomplete="name" value="${esc(account?.name || account?.nome || '')}"></label><label><span>${labelWithRequired('✉️ E-mail', true)}</span><input name="email" type="email" maxlength="160" required autocomplete="email" value="${esc(account?.email || '')}"></label>${phoneField}${bodyFields}${roleField}${professorBlock}${editing ? '' : '<p class="saude-empty-row">Após criar a conta, enviamos um e-mail com o link para a pessoa criar a senha.</p>'}<button type="submit" class="saude-btn saude-btn--primary">${editing ? 'Salvar alterações' : 'Criar conta e enviar convite'}</button></form></section>`;
@@ -872,20 +872,20 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
       setDrillOpen(drill, false);
     }
     if (name === 'role') {
-      const showProfessor = value === 'student';
-      form.querySelector('[data-professor-link-field]')?.toggleAttribute('hidden', !showProfessor);
+      const isStudent = value === 'student';
+      form.querySelector('[data-professor-link-field]')?.toggleAttribute('hidden', !isStudent);
       const professorInput = form.querySelector('[name="professor_id"]');
       if (professorInput) {
-        if (showProfessor) professorInput.setAttribute('required', '');
+        if (isStudent) professorInput.setAttribute('required', '');
         else professorInput.removeAttribute('required');
       }
       const bodyBox = form.querySelector('[data-body-profile-fields]');
       if (bodyBox) {
-        bodyBox.dataset.bodyRequired = showProfessor ? 'true' : 'false';
+        bodyBox.toggleAttribute('hidden', !isStudent);
         ['data_nascimento', 'altura_cm', 'sexo'].forEach((fieldName) => {
           const field = form.querySelector(`[name="${fieldName}"]`);
           if (!field) return;
-          if (showProfessor) field.setAttribute('required', '');
+          if (isStudent) field.setAttribute('required', '');
           else field.removeAttribute('required');
         });
       }
@@ -1061,13 +1061,13 @@ export function renderSaudeContent(container, { state, onNavigate, onCreateDiet,
     const values = new FormData(form);
     const role = String(values.get('role') || state.editingAccount?.role || 'student');
     const payload = { name: String(values.get('name') || '').trim(), email: String(values.get('email') || '').trim(), role };
-    if (role !== 'admin') {
-      payload.phone = String(values.get('phone') || '').trim();
+    if (role !== 'admin') payload.phone = String(values.get('phone') || '').trim();
+    if (role === 'student') {
+      payload.professor_id = String(values.get('professor_id') || '').trim();
       payload.sexo = String(values.get('sexo') || '').trim();
       payload.data_nascimento = String(values.get('data_nascimento') || '').trim();
       payload.altura_cm = String(values.get('altura_cm') || '').trim();
     }
-    if (role === 'student') payload.professor_id = String(values.get('professor_id') || '').trim();
     if (form.dataset.editing === 'true') onEditAccount?.({ ...payload, id: form.dataset.id });
     else onCreateAccount?.(payload);
   });
