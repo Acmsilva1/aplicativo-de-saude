@@ -5111,7 +5111,7 @@ details[open] > summary .ui-chevron--fold {
 .login-form input[aria-invalid="true"], .password-change-card input[aria-invalid="true"] { border-color: #d92d20; }
 .app-toast { pointer-events: auto; }
 
-/* ?? Avaliações corporais (compacto no mobile) ?? */
+/* Avaliacoes corporais (compacto no mobile) */
 .av-page {
   display: flex;
   flex-direction: column;
