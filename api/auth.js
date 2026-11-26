@@ -11,12 +11,6 @@ import {
   deleteAccount,
   changePassword,
   completeInvite,
-  getWebAuthnRegisterOptions,
-  verifyWebAuthnRegistration,
-  getWebAuthnLoginOptions,
-  verifyWebAuthnLogin,
-  listWebAuthnCredentials,
-  revokeWebAuthnCredential,
 } from '../features/auth/service/authService.js';
 import { appMetrics } from '../lib/observability.js';
 import { saudeStore } from '../features/saude/data/saudeStore.js';
@@ -68,29 +62,6 @@ export default async function handler(req, res) {
         : res.status(400).json({ error: result.error || STRONG_PASSWORD_ERROR });
     }
 
-    if (resource === 'webauthn-login-options' && req.method === 'POST') {
-      const result = await getWebAuthnLoginOptions(req, req.body || {});
-      return result.options
-        ? res.json(result)
-        : res.status(400).json({ error: result.error || 'Biometria indisponível.' });
-    }
-
-    if (resource === 'webauthn-login' && req.method === 'POST') {
-      const limit = await checkLoginRateLimitAsync(req, `webauthn:${String(req.body?.response?.id || req.body?.credentialId || '')}`);
-      if (!limit.allowed) {
-        return res.status(429).json({
-          error: `Muitas tentativas. Aguarde ${limit.retryAfterSec} segundos e tente novamente.`,
-        });
-      }
-      const result = await verifyWebAuthnLogin(req, res, req.body || {});
-      if (!result.user) {
-        recordLoginFailure(limit.key);
-        return res.status(401).json({ error: result.error || 'Não foi possível entrar com biometria.' });
-      }
-      clearLoginAttempts(limit.key);
-      return res.json({ user: result.user });
-    }
-
     const user = await getUser(req, res);
     if (!user) return res.status(401).json({ error: 'Sessão encerrada. Entre novamente.' });
     // session: sempre retorna o usuário (incl. trial expirado) para a UI bloquear.
@@ -100,44 +71,6 @@ export default async function handler(req, res) {
       return updated
         ? res.json({ user: updated })
         : res.status(400).json({ error: STRONG_PASSWORD_ERROR });
-    }
-
-    if (resource === 'webauthn-register-options' && req.method === 'POST') {
-      if (user.must_change_password) {
-        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
-      }
-      if (rejectIfTrialExpired(res, user)) return;
-      const result = await getWebAuthnRegisterOptions(req, user);
-      return result.options
-        ? res.json(result)
-        : res.status(400).json({ error: result.error || 'Biometria indisponível.' });
-    }
-    if (resource === 'webauthn-register' && req.method === 'POST') {
-      if (user.must_change_password) {
-        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
-      }
-      if (rejectIfTrialExpired(res, user)) return;
-      const result = await verifyWebAuthnRegistration(req, user, req.body || {});
-      return result.ok
-        ? res.json(result)
-        : res.status(400).json({ error: result.error || 'Não foi possível ativar a biometria.' });
-    }
-    if (resource === 'webauthn-credentials' && req.method === 'GET') {
-      if (user.must_change_password) {
-        return res.status(403).json({ error: 'Troque a senha inicial antes de continuar.', code: 'password_change_required' });
-      }
-      if (rejectIfTrialExpired(res, user)) return;
-      const result = await listWebAuthnCredentials(user);
-      return result.credentials
-        ? res.json(result)
-        : res.status(400).json({ error: result.error || 'Biometria indisponível.' });
-    }
-    if (resource === 'webauthn-revoke' && req.method === 'POST') {
-      if (rejectIfTrialExpired(res, user)) return;
-      const result = await revokeWebAuthnCredential(user, req.body || {});
-      return result.ok
-        ? res.json(result)
-        : res.status(400).json({ error: result.error || 'Não foi possível desativar a biometria.' });
     }
 
     if (resource === 'privacy-export' && req.method === 'GET') {

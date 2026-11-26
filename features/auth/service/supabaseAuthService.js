@@ -1,5 +1,6 @@
 import { getSupabaseAdmin, createUserClient, getSupabaseAnon } from '../../../lib/supabase.js';
 import { readCookie, sessionCookieOptions } from '../../../lib/cookies.js';
+import { remainingSessionMs, sessionDeadlineUnix } from '../../../lib/sessionTtl.js';
 import { normalizeBrazilPhone } from '../../../lib/phone.js';
 import { normalizeProfileBodyFields } from '../../../lib/profileBody.js';
 import { isStrongPassword } from '../../../lib/passwordPolicy.js';
@@ -127,6 +128,7 @@ function encodeSession(session) {
     access_token: session.access_token,
     refresh_token: session.refresh_token,
     expires_at: session.expires_at || null,
+    app_expires_at: session.app_expires_at || sessionDeadlineUnix(),
   }), 'utf8').toString('base64url');
 }
 
@@ -142,10 +144,14 @@ function decodeSession(raw) {
 }
 
 function setSessionCookie(req, res, session) {
-  const maxAge = session.expires_at
-    ? Math.max(60_000, (session.expires_at * 1000) - Date.now())
-    : 8 * 60 * 60 * 1000;
-  res.cookie(SESSION_COOKIE, encodeSession(session), sessionCookieOptions(req, maxAge));
+  const appExpiresAt = session.app_expires_at || sessionDeadlineUnix();
+  const maxAge = remainingSessionMs(appExpiresAt);
+  if (maxAge <= 0) return;
+  res.cookie(
+    SESSION_COOKIE,
+    encodeSession({ ...session, app_expires_at: appExpiresAt }),
+    sessionCookieOptions(req, maxAge),
+  );
 }
 
 export async function clearSession(req, res) {
@@ -163,6 +169,7 @@ export async function clearSession(req, res) {
 }
 
 async function refreshIfNeeded(req, res, session) {
+  if (session.app_expires_at && remainingSessionMs(session.app_expires_at) <= 0) return session;
   const expiresAtMs = session.expires_at ? session.expires_at * 1000 : 0;
   if (expiresAtMs && expiresAtMs > Date.now() + 60_000) return session;
   if (!session.refresh_token) return session;
@@ -170,19 +177,29 @@ async function refreshIfNeeded(req, res, session) {
     refresh_token: session.refresh_token,
   });
   if (error || !data?.session) return session;
-  setSessionCookie(req, res, data.session);
-  return {
+  const next = {
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
     expires_at: data.session.expires_at,
+    app_expires_at: session.app_expires_at || sessionDeadlineUnix(),
   };
+  setSessionCookie(req, res, next);
+  return next;
 }
 
 export async function getUser(req, res) {
   const raw = readCookie(req, SESSION_COOKIE);
   let session = decodeSession(raw);
   if (!session) return null;
+  if (session.app_expires_at && remainingSessionMs(session.app_expires_at) <= 0) {
+    await clearSession(req, res);
+    return null;
+  }
   session = await refreshIfNeeded(req, res, session);
+  if (session.app_expires_at && remainingSessionMs(session.app_expires_at) <= 0) {
+    await clearSession(req, res);
+    return null;
+  }
   const admin = getSupabaseAdmin();
   const { data, error } = await admin.auth.getUser(session.access_token);
   if (error || !data?.user) return null;

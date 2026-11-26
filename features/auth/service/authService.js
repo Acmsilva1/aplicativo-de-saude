@@ -75,12 +75,3 @@ export async function verifyAccountPassword(email, password) {
     ? mock.verifyDemoPassword(email, password)
     : real.verifyPassword(email, password);
 }
-
-export {
-  getWebAuthnRegisterOptions,
-  verifyWebAuthnRegistration,
-  getWebAuthnLoginOptions,
-  verifyWebAuthnLogin,
-  listWebAuthnCredentials,
-  revokeWebAuthnCredential,
-} from './webauthnService.js';

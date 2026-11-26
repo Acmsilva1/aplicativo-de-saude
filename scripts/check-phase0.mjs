@@ -11,7 +11,6 @@ import { readFile } from 'node:fs/promises';
 import { createBackgroundSaves } from '../features/backgroundSaves.js';
 
 const mock = await import('../features/auth/service/mockAuthService.js');
-const { verifyWebAuthnLogin } = await import('../features/auth/service/webauthnService.js');
 
 const cookies = [];
 const res = {
@@ -22,7 +21,7 @@ const res = {
 };
 const req = { headers: { host: 'localhost:5199', 'x-forwarded-proto': 'http' }, secure: false };
 
-// 1) Sessão biométrica / must_change_password: não grava cookie.
+// 1) must_change_password: não grava cookie.
 const pending = mock.createDemoAccount({
   name: 'Fase0 Bio',
   email: `fase0.bio.${Date.now()}@saude.local`,
@@ -63,10 +62,10 @@ const pausedInvite = mock.completeDemoInvite(req, res, {
 assert.ok(pausedInvite.error, 'convite em conta pausada deve falhar');
 assert.match(pausedInvite.error, /indisponível|pausada/i);
 
-// 4) firstAccess: sem auto-click da biometria.
-const firstAccessSrc = await readFile(new URL('../features/auth/firstAccess.js', import.meta.url), 'utf8');
-assert.equal(firstAccessSrc.includes('unlockBtn.click()'), false, 'não deve auto-disparar WebAuthn');
-assert.ok(firstAccessSrc.includes('unlockBtn.focus'), 'deve focar o botão em vez de clicar');
+// 4) Login sem biometria obrigatória.
+const appBootSrc = await readFile(new URL('../features/app.js', import.meta.url), 'utf8');
+assert.equal(appBootSrc.includes('requireBiometricAfterPassword'), false, 'login não deve exigir biometria');
+assert.equal(appBootSrc.includes('webauthn-'), false, 'cliente não deve chamar WebAuthn');
 
 // 5) saveWater sem meta: feedback + render.
 const appSrc = await readFile(new URL('../features/app.js', import.meta.url), 'utf8');
@@ -102,8 +101,4 @@ saves.save({
 assert.equal(water.total_ml, 200);
 await saves.idle();
 
-// 9) verifyWebAuthnLogin caminho de erro sem credential (smoke import).
-const bad = await verifyWebAuthnLogin(req, res, {});
-assert.ok(bad.error);
-
-console.log('PASS phase0: cookie, invite pausado, biometria UI, água/meta, preserve-ui, trial migration');
+console.log('PASS phase0: cookie, invite pausado, login senha, água/meta, preserve-ui, trial migration');

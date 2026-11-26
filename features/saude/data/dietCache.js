@@ -65,7 +65,7 @@ export function clearAllClientHealthCaches() {
   for (let i = 0; i < localStorage.length; i += 1) {
     const k = localStorage.key(i);
     if (!k) continue;
-    if (k.startsWith('ritmo_') && !k.startsWith('ritmo_saude_biometric')) toRemove.push(k);
+    if (k.startsWith('ritmo_')) toRemove.push(k);
   }
   toRemove.forEach((k) => localStorage.removeItem(k));
 }

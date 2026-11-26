@@ -6,7 +6,7 @@ Texto simples também aparece no app (login e rodapé → Privacidade).
 
 - Cadastro: nome, e-mail, telefone, tipo de conta (aluno/professor)
 - Saúde: dietas, água e avaliações do corpo
-- Segurança: sessão de login e dados técnicos da digital do aparelho (sem a imagem da digital)
+- Segurança: sessão de login com e-mail e senha (válida por até 3 horas)
 
 ## O que você pode fazer no app
 

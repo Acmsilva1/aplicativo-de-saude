@@ -67,7 +67,7 @@ export function isSecureCookie(req) {
 }
 
 function sessionCookieOptions(req) {
-  return { httpOnly: true, sameSite: 'strict', secure: isSecureCookie(req), path: '/', maxAge: 8 * 60 * 60 * 1000 };
+  return { httpOnly: true, sameSite: 'strict', secure: isSecureCookie(req), path: '/', maxAge: 3 * 60 * 60 * 1000 };
 }
 
 function publicAccount({ password_hash, invite_pending, ...account }) {

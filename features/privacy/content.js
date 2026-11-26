@@ -4,7 +4,7 @@ export const PRIVACY_TITLE = 'Seus dados e privacidade';
 
 export const PRIVACY_SUMMARY = [
   'O Ritmo Saúde guarda seus dados de cadastro e de saúde (dieta, água e avaliações do corpo) para acompanhar sua rotina no piloto.',
-  'A digital ou o Face ID ficam só no seu celular. Nós não guardamos a imagem da sua digital.',
+  'O acesso é feito com e-mail e senha. A sessão permanece ativa por até 3 horas; depois disso é preciso entrar de novo.',
   'Usamos esses dados para prestar o serviço que você pediu e para manter seu acesso seguro.',
 ].join(' ');
 
